@@ -30,6 +30,12 @@ HMDType HmdTypeFromStr(const std::string& hmdType) {
         return HMDType::QUESTPRO;
     } else if (hmdType == "Quest 3S" || hmdType == "Quest 3s" || hmdType == "Panther") {
         return HMDType::QUEST3S;
+    } else if (hmdType == "PICO 4" || hmdType == "Pico 4") {
+        return HMDType::PICO4;
+    } else if (hmdType == "PICO 4 Ultra" || hmdType == "Pico 4 Ultra") {
+        return HMDType::PICO4ULTRA;
+    } else if (hmdType.find("PICO") != std::string::npos || hmdType.find("Pico") != std::string::npos) {
+        return HMDType::PICO_GENERIC;
     }
     return HMDType::UNKNOWN;
 }

@@ -163,12 +163,25 @@ class VrActivity : EmulationActivity() {
         var currentActivity: VrActivity? = null
 
         init {
-            if (Build.BRAND == "oculus") {
+            val vendorTags = listOf(Build.BRAND, Build.MANUFACTURER, Build.PRODUCT)
+                .joinToString(" ")
+                .lowercase()
+
+            val forwardLoaderCandidates = when {
+                "oculus" in vendorTags || "meta" in vendorTags ->
+                    listOf("openxr_forwardloader.oculus")
+                "pico" in vendorTags || "bytedance" in vendorTags ->
+                    listOf("openxr_forwardloader.pico", "openxr_forwardloader")
+                else ->
+                    emptyList()
+            }
+
+            for (libraryName in forwardLoaderCandidates) {
                 try {
-                    System.loadLibrary("openxr_forwardloader.oculus")
+                    System.loadLibrary(libraryName)
+                    break
                 } catch (e: UnsatisfiedLinkError) {
-                    // This was needed before v62
-                    // In v62 this library is deleted
+                    // Optional runtime-provided loader; ignore if unavailable.
                 }
             }
         }

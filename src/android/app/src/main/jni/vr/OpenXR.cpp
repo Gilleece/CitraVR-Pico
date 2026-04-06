@@ -91,8 +91,7 @@ namespace {
 }
 
 // Next return code: -3
-int XrCheckRequiredExtensions(const char* const* requiredExtensionNames,
-                              const size_t       numRequiredExtensions) {
+int XrGetSupportedExtensions(std::vector<XrExtensionProperties>& extensionProperties) {
 
 #ifndef NDEBUG
     XrEnumerateLayerProperties();
@@ -120,7 +119,7 @@ int XrCheckRequiredExtensions(const char* const* requiredExtensionNames,
 
         numInputExtensions = numOutputExtensions;
 
-        auto extensionProperties = std::vector<XrExtensionProperties>(numOutputExtensions);
+        extensionProperties = std::vector<XrExtensionProperties>(numOutputExtensions);
 
         for (auto& ext : extensionProperties) {
             ext.type = XR_TYPE_EXTENSION_PROPERTIES;
@@ -135,41 +134,53 @@ int XrCheckRequiredExtensions(const char* const* requiredExtensionNames,
         }
 #endif
 
-        for (uint32_t i = 0; i < numRequiredExtensions; i++) {
-            bool found = false;
-            for (uint32_t j = 0; j < numOutputExtensions; j++) {
-                if (!strcmp(requiredExtensionNames[i], extensionProperties[j].extensionName)) {
-                    ALOGD("Found required extension {}", requiredExtensionNames[i]);
-                    found = true;
-                    break;
-                }
-            }
-            if (!found) {
-                ALOGE("Failed to find required extension {}", requiredExtensionNames[i]);
-                return -2;
-            }
-        }
     }
     return 0;
 }
 
+bool HasExtension(const std::vector<XrExtensionProperties>& extensionProperties,
+                  const char* extensionName) {
+    for (const auto& extensionProperty : extensionProperties) {
+        if (!strcmp(extensionName, extensionProperty.extensionName)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 XrInstance XrInstanceCreate() {
-    // Check that the extensions required are present.
     static const char* const requiredExtensionNames[] = {
         XR_KHR_OPENGL_ES_ENABLE_EXTENSION_NAME,
         XR_EXT_PERFORMANCE_SETTINGS_EXTENSION_NAME,
         XR_KHR_ANDROID_THREAD_SETTINGS_EXTENSION_NAME,
         XR_KHR_COMPOSITION_LAYER_EQUIRECT2_EXTENSION_NAME,
         XR_KHR_ANDROID_SURFACE_SWAPCHAIN_EXTENSION_NAME,
+    };
+    static const char* const optionalExtensionNames[] = {
         XR_FB_COMPOSITION_LAYER_SETTINGS_EXTENSION_NAME,
         XR_FB_PASSTHROUGH_EXTENSION_NAME,
         XR_META_PERFORMANCE_METRICS_EXTENSION_NAME,
     };
-    static constexpr size_t numRequiredExtensions =
-        sizeof(requiredExtensionNames) / sizeof(requiredExtensionNames[0]);
+    std::vector<XrExtensionProperties> extensionProperties;
+    BAIL_ON_ERR(XrGetSupportedExtensions(extensionProperties), XR_NULL_HANDLE);
 
-    BAIL_ON_ERR(XrCheckRequiredExtensions(&requiredExtensionNames[0], numRequiredExtensions),
-                XR_NULL_HANDLE);
+    std::vector<const char*> enabledExtensionNames;
+    for (const char* requiredExtensionName : requiredExtensionNames) {
+        if (!HasExtension(extensionProperties, requiredExtensionName)) {
+            ALOGE("Failed to find required extension {}", requiredExtensionName);
+            return XR_NULL_HANDLE;
+        }
+        enabledExtensionNames.push_back(requiredExtensionName);
+        ALOGD("Found required extension {}", requiredExtensionName);
+    }
+    for (const char* optionalExtensionName : optionalExtensionNames) {
+        if (HasExtension(extensionProperties, optionalExtensionName)) {
+            enabledExtensionNames.push_back(optionalExtensionName);
+            ALOGD("Enabled optional extension {}", optionalExtensionName);
+        } else {
+            ALOGW("Optional extension unavailable: {}", optionalExtensionName);
+        }
+    }
 
     XrApplicationInfo appInfo = {};
     strcpy(appInfo.applicationName, "Citra");
@@ -185,8 +196,8 @@ XrInstance XrInstanceCreate() {
     ici.applicationInfo       = appInfo;
     ici.enabledApiLayerCount  = 0;
     ici.enabledApiLayerNames  = NULL;
-    ici.enabledExtensionCount = numRequiredExtensions;
-    ici.enabledExtensionNames = requiredExtensionNames;
+    ici.enabledExtensionCount = enabledExtensionNames.size();
+    ici.enabledExtensionNames = enabledExtensionNames.data();
 
     XrResult   initResult;
     XrInstance instanceLocal;
