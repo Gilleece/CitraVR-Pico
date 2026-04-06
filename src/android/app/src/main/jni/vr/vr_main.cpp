@@ -289,7 +289,11 @@ private:
         // If user set "Void" in settings, don't render passthrough
         if (VRSettings::values.vr_environment !=
             static_cast<int32_t>(VRSettings::VREnvironmentType::VOID)) {
-            mPassthroughLayer = std::make_unique<PassthroughLayer>(gOpenXr->mSession);
+            if (OpenXr::IsExtensionEnabled(XR_FB_PASSTHROUGH_EXTENSION_NAME)) {
+                mPassthroughLayer = std::make_unique<PassthroughLayer>(gOpenXr->mSession);
+            } else {
+                ALOGW("Passthrough requested, but XR_FB_passthrough is unavailable on this runtime");
+            }
         }
 
         // Create the game surface layer.
@@ -1311,6 +1315,9 @@ extern "C" JNIEXPORT jfloatArray JNICALL
 Java_org_citra_citra_1emu_vr_ui_VrRibbonLayer_nativeGetStatsOXR(JNIEnv* env, jobject thiz) {
 
     if (vr::gSession == XR_NULL_HANDLE || OpenXr::GetInstance() == XR_NULL_HANDLE) {
+        return nullptr;
+    }
+    if (!OpenXr::IsExtensionEnabled(XR_META_PERFORMANCE_METRICS_EXTENSION_NAME)) {
         return nullptr;
     }
 

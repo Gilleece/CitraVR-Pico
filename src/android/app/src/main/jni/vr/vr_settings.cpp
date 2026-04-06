@@ -20,6 +20,9 @@ namespace VRSettings {
 Values values = {};
 
 HMDType HmdTypeFromStr(const std::string& hmdType) {
+    if (hmdType.find("Pico") != std::string::npos || hmdType.find("PICO") != std::string::npos) {
+        return HMDType::QUEST3;
+    }
     if (hmdType == "Quest") {
         return HMDType::QUEST1;
     } else if (hmdType == "Quest" || hmdType == "Quest 2" || hmdType == "Miramar") {

@@ -30,6 +30,7 @@ class OpenXr {
 
 public:
     static XrInstance& GetInstance();
+    static bool        IsExtensionEnabled(const char* extensionName);
     int32_t            Init(JavaVM* const jvm, const jobject activityObject);
     void               Shutdown();
 

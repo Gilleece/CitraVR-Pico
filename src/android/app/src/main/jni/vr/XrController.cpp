@@ -55,6 +55,31 @@ XrActionSuggestedBinding ActionSuggestedBinding(const XrInstance& instance, XrAc
     return asb;
 }
 
+void SuggestInteractionProfileBindings(const XrInstance& instance, const char* interactionProfile,
+                                       const std::vector<XrActionSuggestedBinding>& bindings) {
+    XrPath interactionProfilePath = XR_NULL_PATH;
+    const XrResult pathResult =
+        xrStringToPath(instance, interactionProfile, &interactionProfilePath);
+    if (XR_FAILED(pathResult)) {
+        ALOGW("Skipping interaction profile {} due to xrStringToPath error {}", interactionProfile,
+              pathResult);
+        return;
+    }
+
+    XrInteractionProfileSuggestedBinding suggestedBindings = {};
+    suggestedBindings.type                   = XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING;
+    suggestedBindings.interactionProfile     = interactionProfilePath;
+    suggestedBindings.suggestedBindings      = bindings.data();
+    suggestedBindings.countSuggestedBindings = bindings.size();
+
+    const XrResult suggestResult = xrSuggestInteractionProfileBindings(instance, &suggestedBindings);
+    if (XR_FAILED(suggestResult)) {
+        ALOGW("Failed to suggest bindings for profile {}: {}", interactionProfile, suggestResult);
+    } else {
+        ALOGI("Suggested bindings for interaction profile {}", interactionProfile);
+    }
+}
+
 XrSpace CreateActionSpace(const XrSession& session, XrAction poseAction, XrPath subactionPath) {
     XrActionSpaceCreateInfo asci         = {};
     asci.type                            = XR_TYPE_ACTION_SPACE_CREATE_INFO;
@@ -106,14 +131,8 @@ InputStateStatic::InputStateStatic(const XrInstance& instance, const XrSession& 
     mSqueezeTriggerAction = CreateAction(mActionSet, XR_ACTION_TYPE_BOOLEAN_INPUT,
                                          "squeeze_trigger", nullptr, 2, handSubactionPaths);
 
-    XrPath interactionProfilePath = XR_NULL_PATH;
-    OXR(xrStringToPath(instance, "/interaction_profiles/oculus/touch_controller",
-                       &interactionProfilePath));
-
-    // Create bindings for Quest controllers.
+    // Create bindings for Quest/Pico/OpenXR standard controllers.
     {
-        // Map bindings
-
         std::vector<XrActionSuggestedBinding> bindings;
         bindings.push_back(
             ActionSuggestedBinding(instance, mAButtonAction, "/user/hand/right/input/a/click"));
@@ -154,12 +173,24 @@ InputStateStatic::InputStateStatic(const XrInstance& instance, const XrSession& 
         bindings.push_back(ActionSuggestedBinding(instance, mSqueezeTriggerAction,
                                                   "/user/hand/left/input/squeeze/value"));
 
-        XrInteractionProfileSuggestedBinding suggestedBindings = {};
-        suggestedBindings.type                   = XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING;
-        suggestedBindings.interactionProfile     = interactionProfilePath;
-        suggestedBindings.suggestedBindings      = &bindings[0];
-        suggestedBindings.countSuggestedBindings = bindings.size();
-        OXR(xrSuggestInteractionProfileBindings(instance, &suggestedBindings));
+        SuggestInteractionProfileBindings(instance, "/interaction_profiles/oculus/touch_controller",
+                                         bindings);
+        SuggestInteractionProfileBindings(instance, "/interaction_profiles/bytedance/pico4_controller",
+                                         bindings);
+
+        std::vector<XrActionSuggestedBinding> simpleControllerBindings;
+        simpleControllerBindings.push_back(
+            ActionSuggestedBinding(instance, mLeftMenuButtonAction, "/user/hand/left/input/menu/click"));
+        simpleControllerBindings.push_back(
+            ActionSuggestedBinding(instance, mAButtonAction, "/user/hand/right/input/select/click"));
+        simpleControllerBindings.push_back(
+            ActionSuggestedBinding(instance, mBButtonAction, "/user/hand/left/input/select/click"));
+        simpleControllerBindings.push_back(
+            ActionSuggestedBinding(instance, mHandPoseAction, "/user/hand/left/input/aim/pose"));
+        simpleControllerBindings.push_back(
+            ActionSuggestedBinding(instance, mHandPoseAction, "/user/hand/right/input/aim/pose"));
+        SuggestInteractionProfileBindings(instance, "/interaction_profiles/khr/simple_controller",
+                                         simpleControllerBindings);
 
         // Attach to session
         XrSessionActionSetsAttachInfo attachInfo = {};
