@@ -61,9 +61,14 @@ void       PrioritizeTid(const int tid) {
               ALOGE("PrioritizeTid() called before session is initialized");
               return;
     }
-          PFN_xrSetAndroidApplicationThreadKHR pfnSetAndroidApplicationThreadKHR = NULL;
-          OXR(xrGetInstanceProcAddr(OpenXr::GetInstance(), "xrSetAndroidApplicationThreadKHR",
-                                    (PFN_xrVoidFunction*)(&pfnSetAndroidApplicationThreadKHR)));
+          PFN_xrSetAndroidApplicationThreadKHR pfnSetAndroidApplicationThreadKHR = nullptr;
+          OXR_CheckErrors(xrGetInstanceProcAddr(OpenXr::GetInstance(), "xrSetAndroidApplicationThreadKHR",
+                                    (PFN_xrVoidFunction*)(&pfnSetAndroidApplicationThreadKHR)),
+                          "xrGetInstanceProcAddr(xrSetAndroidApplicationThreadKHR)", false);
+          if (pfnSetAndroidApplicationThreadKHR == nullptr) {
+              ALOGW("xrSetAndroidApplicationThreadKHR unavailable; skipping renderer thread priority");
+              return;
+          }
 
           OXR(pfnSetAndroidApplicationThreadKHR(gSession, XR_ANDROID_THREAD_TYPE_RENDERER_MAIN_KHR, tid));
           gPriorityTid = tid;
@@ -80,6 +85,13 @@ std::unique_ptr<OpenXr>                            gOpenXr;
 MessageQueue                                       gMessageQueue;
 
 const std::vector<float> immersiveScaleFactor = {1.0f, 3.0f, 1.4f};
+
+bool OpenXrFunctionAvailable(const char* functionName) {
+    PFN_xrVoidFunction functionPointer = nullptr;
+    const XrResult result =
+        xrGetInstanceProcAddr(OpenXr::GetInstance(), functionName, &functionPointer);
+    return result == XR_SUCCESS && functionPointer != nullptr;
+}
 
 void ForwardButtonStateChangeToCitra(JNIEnv* jni, jobject activityObject,
                                      jmethodID forwardVRInputMethodID, const int androidButtonCode,
@@ -288,8 +300,12 @@ private:
                    static_cast<int32_t>(VRSettings::VREnvironmentType::PASSTHROUGH));
         // If user set "Void" in settings, don't render passthrough
         if (VRSettings::values.vr_environment !=
-            static_cast<int32_t>(VRSettings::VREnvironmentType::VOID)) {
+                static_cast<int32_t>(VRSettings::VREnvironmentType::VOID) &&
+            OpenXrFunctionAvailable("xrCreatePassthroughFB")) {
             mPassthroughLayer = std::make_unique<PassthroughLayer>(gOpenXr->mSession);
+        } else if (VRSettings::values.vr_environment !=
+                   static_cast<int32_t>(VRSettings::VREnvironmentType::VOID)) {
+            ALOGW("Passthrough is unavailable on this OpenXR runtime; using void environment.");
         }
 
         // Create the game surface layer.
@@ -959,34 +975,45 @@ private:
             if (newAppState.mIsXrSessionActive) {
                 ALOGI("{}(): Entered XR_SESSION_STATE_READY", __func__);
                 PFN_xrPerfSettingsSetPerformanceLevelEXT pfnPerfSettingsSetPerformanceLevelEXT =
-                    NULL;
-                OXR(xrGetInstanceProcAddr(
-                    gOpenXr->mInstance, "xrPerfSettingsSetPerformanceLevelEXT",
-                    (PFN_xrVoidFunction*)(&pfnPerfSettingsSetPerformanceLevelEXT)));
+                    nullptr;
+                OXR_CheckErrors(xrGetInstanceProcAddr(
+                                    gOpenXr->mInstance, "xrPerfSettingsSetPerformanceLevelEXT",
+                                    (PFN_xrVoidFunction*)(&pfnPerfSettingsSetPerformanceLevelEXT)),
+                                "xrGetInstanceProcAddr(xrPerfSettingsSetPerformanceLevelEXT)",
+                                false);
 
-                OXR(pfnPerfSettingsSetPerformanceLevelEXT(gOpenXr->mSession,
-                                                          XR_PERF_SETTINGS_DOMAIN_CPU_EXT,
-                                                          VRSettings::values.cpu_level));
-                OXR(pfnPerfSettingsSetPerformanceLevelEXT(
-                    gOpenXr->mSession, XR_PERF_SETTINGS_DOMAIN_GPU_EXT, kGpuPerfLevel));
-                ALOGI("{}(): Set clock levels to CPU:{}, GPU:{}", __FUNCTION__,
-                      VRSettings::values.cpu_level, kGpuPerfLevel);
+                if (pfnPerfSettingsSetPerformanceLevelEXT != nullptr) {
+                    OXR(pfnPerfSettingsSetPerformanceLevelEXT(gOpenXr->mSession,
+                                                              XR_PERF_SETTINGS_DOMAIN_CPU_EXT,
+                                                              VRSettings::values.cpu_level));
+                    OXR(pfnPerfSettingsSetPerformanceLevelEXT(
+                        gOpenXr->mSession, XR_PERF_SETTINGS_DOMAIN_GPU_EXT, kGpuPerfLevel));
+                    ALOGI("{}(): Set clock levels to CPU:{}, GPU:{}", __FUNCTION__,
+                          VRSettings::values.cpu_level, kGpuPerfLevel);
+                } else {
+                    ALOGW("xrPerfSettingsSetPerformanceLevelEXT unavailable; skipping CPU/GPU tuning");
+                }
 
-                PFN_xrSetAndroidApplicationThreadKHR pfnSetAndroidApplicationThreadKHR = NULL;
-                OXR(xrGetInstanceProcAddr(
-                    gOpenXr->mInstance, "xrSetAndroidApplicationThreadKHR",
-                    (PFN_xrVoidFunction*)(&pfnSetAndroidApplicationThreadKHR)));
+                PFN_xrSetAndroidApplicationThreadKHR pfnSetAndroidApplicationThreadKHR = nullptr;
+                OXR_CheckErrors(xrGetInstanceProcAddr(
+                                    gOpenXr->mInstance, "xrSetAndroidApplicationThreadKHR",
+                                    (PFN_xrVoidFunction*)(&pfnSetAndroidApplicationThreadKHR)),
+                                "xrGetInstanceProcAddr(xrSetAndroidApplicationThreadKHR)", false);
 
-                if (vr::gPriorityTid > 0) {
+                if (pfnSetAndroidApplicationThreadKHR != nullptr && vr::gPriorityTid > 0) {
                     ALOGD("Setting prio tid from main {}", vr::gPriorityTid);
                     OXR(pfnSetAndroidApplicationThreadKHR(gOpenXr->mSession,
                                                           XR_ANDROID_THREAD_TYPE_RENDERER_MAIN_KHR,
                                                           vr::gPriorityTid));
+                } else if (pfnSetAndroidApplicationThreadKHR == nullptr) {
+                    ALOGW("xrSetAndroidApplicationThreadKHR unavailable; skipping thread hints");
                 } else {
                     ALOGD("Not setting prio tid from main");
                 }
-                OXR(pfnSetAndroidApplicationThreadKHR(
-                    gOpenXr->mSession, XR_ANDROID_THREAD_TYPE_APPLICATION_MAIN_KHR, gettid()));
+                if (pfnSetAndroidApplicationThreadKHR != nullptr) {
+                    OXR(pfnSetAndroidApplicationThreadKHR(
+                        gOpenXr->mSession, XR_ANDROID_THREAD_TYPE_APPLICATION_MAIN_KHR, gettid()));
+                }
                 if (mGameSurfaceLayer) {
                     ALOGD("SetSurface");
                     mGameSurfaceLayer->SetSurface(mActivityObject);

@@ -30,7 +30,7 @@
         android:name="android.hardware.opengles.aep"
         android:required="true" />
 
-    <uses-feature android:name="com.oculus.feature.PASSTHROUGH" android:required="true" />
+    <uses-feature android:name="com.oculus.feature.PASSTHROUGH" android:required="false" />
     <uses-feature android:name="com.oculus.feature.BOUNDARYLESS_APP" android:required="false" />
 
     <uses-permission android:name="android.permission.INTERNET" />
@@ -84,6 +84,8 @@
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
                 <category android:name="com.oculus.intent.category.2D" />
                 <category android:name="com.oculus.intent.category.DEFAULT" />
+                <category android:name="com.picovr.intent.category.2D" />
+                <category android:name="com.picovr.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
 
@@ -97,6 +99,8 @@
             <intent-filter>
                 <category android:name="com.oculus.intent.category.2D" />
                 <category android:name="com.oculus.intent.category.DEFAULT" />
+                <category android:name="com.picovr.intent.category.2D" />
+                <category android:name="com.picovr.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
 
@@ -132,6 +136,7 @@
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="com.oculus.intent.category.VR" />
+                <category android:name="com.picovr.intent.category.VR" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>

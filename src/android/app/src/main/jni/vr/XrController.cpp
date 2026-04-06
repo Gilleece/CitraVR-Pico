@@ -55,6 +55,25 @@ XrActionSuggestedBinding ActionSuggestedBinding(const XrInstance& instance, XrAc
     return asb;
 }
 
+void SuggestBindingsForProfile(const XrInstance& instance, const char* interactionProfileName,
+                               const std::vector<XrActionSuggestedBinding>& bindings) {
+    XrPath interactionProfilePath = XR_NULL_PATH;
+    const XrResult profilePathResult =
+        xrStringToPath(instance, interactionProfileName, &interactionProfilePath);
+    if (XR_FAILED(profilePathResult)) {
+        OXR_CheckErrors(profilePathResult, "xrStringToPath(interaction profile)", false);
+        return;
+    }
+
+    XrInteractionProfileSuggestedBinding suggestedBindings = {};
+    suggestedBindings.type                   = XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING;
+    suggestedBindings.interactionProfile     = interactionProfilePath;
+    suggestedBindings.suggestedBindings      = bindings.data();
+    suggestedBindings.countSuggestedBindings = static_cast<uint32_t>(bindings.size());
+    OXR_CheckErrors(xrSuggestInteractionProfileBindings(instance, &suggestedBindings),
+                    "xrSuggestInteractionProfileBindings", false);
+}
+
 XrSpace CreateActionSpace(const XrSession& session, XrAction poseAction, XrPath subactionPath) {
     XrActionSpaceCreateInfo asci         = {};
     asci.type                            = XR_TYPE_ACTION_SPACE_CREATE_INFO;
@@ -106,11 +125,7 @@ InputStateStatic::InputStateStatic(const XrInstance& instance, const XrSession& 
     mSqueezeTriggerAction = CreateAction(mActionSet, XR_ACTION_TYPE_BOOLEAN_INPUT,
                                          "squeeze_trigger", nullptr, 2, handSubactionPaths);
 
-    XrPath interactionProfilePath = XR_NULL_PATH;
-    OXR(xrStringToPath(instance, "/interaction_profiles/oculus/touch_controller",
-                       &interactionProfilePath));
-
-    // Create bindings for Quest controllers.
+    // Create bindings for XR controllers.
     {
         // Map bindings
 
@@ -154,12 +169,12 @@ InputStateStatic::InputStateStatic(const XrInstance& instance, const XrSession& 
         bindings.push_back(ActionSuggestedBinding(instance, mSqueezeTriggerAction,
                                                   "/user/hand/left/input/squeeze/value"));
 
-        XrInteractionProfileSuggestedBinding suggestedBindings = {};
-        suggestedBindings.type                   = XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING;
-        suggestedBindings.interactionProfile     = interactionProfilePath;
-        suggestedBindings.suggestedBindings      = &bindings[0];
-        suggestedBindings.countSuggestedBindings = bindings.size();
-        OXR(xrSuggestInteractionProfileBindings(instance, &suggestedBindings));
+        SuggestBindingsForProfile(instance, "/interaction_profiles/oculus/touch_controller",
+                                  bindings);
+        SuggestBindingsForProfile(instance, "/interaction_profiles/bytedance/pico4_controller",
+                                  bindings);
+        SuggestBindingsForProfile(instance, "/interaction_profiles/bytedance/pico_neo3_controller",
+                                  bindings);
 
         // Attach to session
         XrSessionActionSetsAttachInfo attachInfo = {};

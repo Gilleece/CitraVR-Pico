@@ -17,6 +17,7 @@ License     :   Licensed under GPLv3 or any later version.
 
 #include <openxr/openxr_platform.h>
 
+#include <string.h>
 #include <vector>
 
 #include <assert.h>
@@ -153,6 +154,43 @@ int XrCheckRequiredExtensions(const char* const* requiredExtensionNames,
     return 0;
 }
 
+std::vector<const char*> XrCollectSupportedExtensions(const char* const* extensionNames,
+                                                      const size_t       numExtensions) {
+    std::vector<const char*> enabledExtensions;
+    XrResult                 result;
+    PFN_xrEnumerateInstanceExtensionProperties xrEnumerateInstanceExtensionProperties;
+    OXR(result = xrGetInstanceProcAddr(XR_NULL_HANDLE, "xrEnumerateInstanceExtensionProperties",
+                                       (PFN_xrVoidFunction*)&xrEnumerateInstanceExtensionProperties));
+    if (result != XR_SUCCESS) {
+        ALOGE("Failed to get xrEnumerateInstanceExtensionProperties function pointer.");
+        return enabledExtensions;
+    }
+
+    uint32_t numInputExtensions  = 0;
+    uint32_t numOutputExtensions = 0;
+    OXR(xrEnumerateInstanceExtensionProperties(NULL, numInputExtensions, &numOutputExtensions,
+                                               NULL));
+    numInputExtensions = numOutputExtensions;
+
+    auto extensionProperties = std::vector<XrExtensionProperties>(numOutputExtensions);
+    for (auto& ext : extensionProperties) {
+        ext.type = XR_TYPE_EXTENSION_PROPERTIES;
+        ext.next = NULL;
+    }
+
+    OXR(xrEnumerateInstanceExtensionProperties(NULL, numInputExtensions, &numOutputExtensions,
+                                               extensionProperties.data()));
+    for (size_t i = 0; i < numExtensions; i++) {
+        for (uint32_t j = 0; j < numOutputExtensions; j++) {
+            if (!strcmp(extensionNames[i], extensionProperties[j].extensionName)) {
+                enabledExtensions.push_back(extensionNames[i]);
+                break;
+            }
+        }
+    }
+    return enabledExtensions;
+}
+
 XrInstance XrInstanceCreate() {
     // Check that the extensions required are present.
     static const char* const requiredExtensionNames[] = {
@@ -161,15 +199,25 @@ XrInstance XrInstanceCreate() {
         XR_KHR_ANDROID_THREAD_SETTINGS_EXTENSION_NAME,
         XR_KHR_COMPOSITION_LAYER_EQUIRECT2_EXTENSION_NAME,
         XR_KHR_ANDROID_SURFACE_SWAPCHAIN_EXTENSION_NAME,
+    };
+    static const char* const optionalExtensionNames[] = {
         XR_FB_COMPOSITION_LAYER_SETTINGS_EXTENSION_NAME,
         XR_FB_PASSTHROUGH_EXTENSION_NAME,
         XR_META_PERFORMANCE_METRICS_EXTENSION_NAME,
     };
     static constexpr size_t numRequiredExtensions =
         sizeof(requiredExtensionNames) / sizeof(requiredExtensionNames[0]);
+    static constexpr size_t numOptionalExtensions =
+        sizeof(optionalExtensionNames) / sizeof(optionalExtensionNames[0]);
 
     BAIL_ON_ERR(XrCheckRequiredExtensions(&requiredExtensionNames[0], numRequiredExtensions),
                 XR_NULL_HANDLE);
+    std::vector<const char*> enabledExtensions =
+        XrCollectSupportedExtensions(requiredExtensionNames, numRequiredExtensions);
+    const std::vector<const char*> enabledOptionalExtensions =
+        XrCollectSupportedExtensions(optionalExtensionNames, numOptionalExtensions);
+    enabledExtensions.insert(enabledExtensions.end(), enabledOptionalExtensions.begin(),
+                             enabledOptionalExtensions.end());
 
     XrApplicationInfo appInfo = {};
     strcpy(appInfo.applicationName, "Citra");
@@ -185,8 +233,8 @@ XrInstance XrInstanceCreate() {
     ici.applicationInfo       = appInfo;
     ici.enabledApiLayerCount  = 0;
     ici.enabledApiLayerNames  = NULL;
-    ici.enabledExtensionCount = numRequiredExtensions;
-    ici.enabledExtensionNames = requiredExtensionNames;
+    ici.enabledExtensionCount = static_cast<uint32_t>(enabledExtensions.size());
+    ici.enabledExtensionNames = enabledExtensions.data();
 
     XrResult   initResult;
     XrInstance instanceLocal;
