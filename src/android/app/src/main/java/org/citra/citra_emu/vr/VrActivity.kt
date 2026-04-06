@@ -101,7 +101,7 @@ class VrActivity : EmulationActivity() {
     fun forwardVRJoystick(x: Float, y: Float, joystickType: Int) {
         // dispatch joystick input as gamepad joystick input
         NativeLibrary.onGamePadMoveEvent(
-            "Quest controller",
+            "VR controller",
             if (joystickType == 0) NativeLibrary.ButtonType.STICK_C else NativeLibrary.ButtonType.STICK_LEFT,
             x, -y
         )
@@ -163,7 +163,7 @@ class VrActivity : EmulationActivity() {
         var currentActivity: VrActivity? = null
 
         init {
-            if (Build.BRAND == "oculus") {
+            if (Build.BRAND.equals("oculus", ignoreCase = true)) {
                 try {
                     System.loadLibrary("openxr_forwardloader.oculus")
                 } catch (e: UnsatisfiedLinkError) {
