@@ -157,6 +157,17 @@ XrVector2f GetDensityScaleForSize(const int32_t texWidth, const int32_t texHeigh
            scaleFactor;
 }
 
+// Meta's compositor requires Y-flip for Android Surface textures (negative size.height).
+// Pico's compositor does not — negative height causes a 180° rotation on Pico.
+float AndroidSurfaceHeightSign() {
+    using VRSettings::HMDType;
+    const auto t = VRSettings::values.hmd_type;
+    if (t == HMDType::PICO4 || t == HMDType::PICO4ULTRA || t == HMDType::TEST_NON_VR) {
+        return 1.0f;
+    }
+    return -1.0f;
+}
+
 } // anonymous namespace
 
 UILayer::UILayer(const jclass classObject, const XrVector3f&& position,
@@ -198,7 +209,7 @@ void UILayer::Frame(const XrSpace&                   space,
     layer.subImage.imageRect.extent.height = mSwapchain.mHeight;
     layer.subImage.imageArrayIndex         = 0;
     layer.pose                             = mPanelFromWorld;
-    const auto scale  = GetDensityScaleForSize(mSwapchain.mWidth, -mSwapchain.mHeight, 1.0f);
+    const auto scale  = GetDensityScaleForSize(mSwapchain.mWidth, AndroidSurfaceHeightSign() * mSwapchain.mHeight, 1.0f);
     layer.size.width  = scale.x;
     layer.size.height = scale.y;
     layers[layerCount++].mQuad = layer;
@@ -279,32 +290,58 @@ int UILayer::CreateSwapchain() {
     }
     // Initialize swapchain.
     {
-        XrSwapchainCreateInfo swapchainCreateInfo;
-        memset(&swapchainCreateInfo, 0, sizeof(swapchainCreateInfo));
-        swapchainCreateInfo.type = XR_TYPE_SWAPCHAIN_CREATE_INFO;
-        swapchainCreateInfo.next = nullptr;
-        swapchainCreateInfo.usageFlags =
-            XR_SWAPCHAIN_USAGE_SAMPLED_BIT | XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT;
-        swapchainCreateInfo.format      = 0;
-        swapchainCreateInfo.sampleCount = 0;
-        swapchainCreateInfo.width       = mSwapchain.mWidth;
-        swapchainCreateInfo.height      = mSwapchain.mHeight;
-        swapchainCreateInfo.faceCount   = 0;
-        swapchainCreateInfo.arraySize   = 0;
-        swapchainCreateInfo.mipCount    = 0;
-
         PFN_xrCreateSwapchainAndroidSurfaceKHR pfnCreateSwapchainAndroidSurfaceKHR = nullptr;
         assert(OpenXr::GetInstance() != XR_NULL_HANDLE);
         XrResult xrResult =
             xrGetInstanceProcAddr(OpenXr::GetInstance(), "xrCreateSwapchainAndroidSurfaceKHR",
                                   (PFN_xrVoidFunction*)(&pfnCreateSwapchainAndroidSurfaceKHR));
         if (xrResult != XR_SUCCESS || pfnCreateSwapchainAndroidSurfaceKHR == nullptr) {
-            FAIL("xrGetInstanceProcAddr failed for "
-                 "xrCreateSwapchainAndroidSurfaceKHR");
+            FAIL("xrGetInstanceProcAddr failed for xrCreateSwapchainAndroidSurfaceKHR");
         }
 
-        OXR(pfnCreateSwapchainAndroidSurfaceKHR(mSession, &swapchainCreateInfo, &mSwapchain.mHandle,
-                                                &mSurface));
+        struct SwapchainParams {
+            int64_t               format;
+            XrSwapchainUsageFlags usageFlags;
+        };
+        static const SwapchainParams kCandidates[] = {
+            {0,      0},
+            {0,      XR_SWAPCHAIN_USAGE_SAMPLED_BIT},
+            {1,      XR_SWAPCHAIN_USAGE_SAMPLED_BIT},
+            {1,      0},
+            {5,      XR_SWAPCHAIN_USAGE_SAMPLED_BIT},
+            {5,      0},
+            {0x8058, XR_SWAPCHAIN_USAGE_SAMPLED_BIT | XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT},
+        };
+        bool swapchainCreated = false;
+        for (const auto& p : kCandidates) {
+            XrSwapchainCreateInfo swapchainCreateInfo;
+            memset(&swapchainCreateInfo, 0, sizeof(swapchainCreateInfo));
+            swapchainCreateInfo.type        = XR_TYPE_SWAPCHAIN_CREATE_INFO;
+            swapchainCreateInfo.usageFlags  = p.usageFlags;
+            swapchainCreateInfo.format      = p.format;
+            // sampleCount/faceCount/arraySize/mipCount must be 0 per spec for Android Surface swapchains.
+            swapchainCreateInfo.sampleCount = 0;
+            swapchainCreateInfo.width       = mSwapchain.mWidth;
+            swapchainCreateInfo.height      = mSwapchain.mHeight;
+            swapchainCreateInfo.faceCount   = 0;
+            swapchainCreateInfo.arraySize   = 0;
+            swapchainCreateInfo.mipCount    = 0;
+
+            const XrResult result = pfnCreateSwapchainAndroidSurfaceKHR(
+                mSession, &swapchainCreateInfo, &mSwapchain.mHandle, &mSurface);
+            if (result == XR_SUCCESS) {
+                ALOGD("UILayer: swapchain created format={} usageFlags=0x{:x}", p.format,
+                      p.usageFlags);
+                swapchainCreated = true;
+                break;
+            }
+            char errBuf[XR_MAX_RESULT_STRING_SIZE] = {};
+            xrResultToString(OpenXr::GetInstance(), result, errBuf);
+            ALOGW("UILayer: format={} usageFlags=0x{:x} -> {}", p.format, p.usageFlags, errBuf);
+        }
+        if (!swapchainCreated) {
+            FAIL("UILayer: all xrCreateSwapchainAndroidSurfaceKHR combinations failed");
+        }
 
         ALOGD("UILayer: created swapchain {}x{}", mSwapchain.mWidth, mSwapchain.mHeight);
 

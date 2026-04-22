@@ -159,8 +159,65 @@ InputStateStatic::InputStateStatic(const XrInstance& instance, const XrSession& 
         suggestedBindings.interactionProfile     = interactionProfilePath;
         suggestedBindings.suggestedBindings      = &bindings[0];
         suggestedBindings.countSuggestedBindings = bindings.size();
-        OXR(xrSuggestInteractionProfileBindings(instance, &suggestedBindings));
+        // Non-fatal: Oculus profile is not supported on non-Meta runtimes (e.g. Pico).
+        const XrResult oculusResult = xrSuggestInteractionProfileBindings(instance, &suggestedBindings);
+        if (oculusResult != XR_SUCCESS) {
+            ALOGW("Oculus touch controller profile not supported ({}), skipping", oculusResult);
+        }
+    }
 
+    // Pico 4 controller bindings — suggested when XR_BD_controller_interaction is available.
+    if (gOptionalExtensions.hasBdControllerInteraction) {
+        XrPath picoProfilePath = XR_NULL_PATH;
+        OXR(xrStringToPath(instance, "/interaction_profiles/bytedance/pico4_controller",
+                           &picoProfilePath));
+
+        std::vector<XrActionSuggestedBinding> picoBindings;
+        picoBindings.push_back(ActionSuggestedBinding(instance, mAButtonAction,
+            "/user/hand/right/input/a/click"));
+        picoBindings.push_back(ActionSuggestedBinding(instance, mBButtonAction,
+            "/user/hand/right/input/b/click"));
+        picoBindings.push_back(ActionSuggestedBinding(instance, mXButtonAction,
+            "/user/hand/left/input/x/click"));
+        picoBindings.push_back(ActionSuggestedBinding(instance, mYButtonAction,
+            "/user/hand/left/input/y/click"));
+        picoBindings.push_back(ActionSuggestedBinding(instance, mLeftHandIndexTriggerAction,
+            "/user/hand/left/input/trigger/click"));
+        picoBindings.push_back(ActionSuggestedBinding(instance, mRightHandIndexTriggerAction,
+            "/user/hand/right/input/trigger/click"));
+        picoBindings.push_back(ActionSuggestedBinding(instance, mHandPoseAction,
+            "/user/hand/left/input/aim/pose"));
+        picoBindings.push_back(ActionSuggestedBinding(instance, mHandPoseAction,
+            "/user/hand/right/input/aim/pose"));
+        picoBindings.push_back(ActionSuggestedBinding(instance, mLeftMenuButtonAction,
+            "/user/hand/left/input/menu/click"));
+        picoBindings.push_back(ActionSuggestedBinding(instance, mThumbStickAction,
+            "/user/hand/left/input/thumbstick"));
+        picoBindings.push_back(ActionSuggestedBinding(instance, mThumbStickAction,
+            "/user/hand/right/input/thumbstick"));
+        picoBindings.push_back(ActionSuggestedBinding(instance, mThumbClickAction,
+            "/user/hand/left/input/thumbstick/click"));
+        picoBindings.push_back(ActionSuggestedBinding(instance, mThumbClickAction,
+            "/user/hand/right/input/thumbstick/click"));
+        // Pico 4 squeeze uses click, not value
+        picoBindings.push_back(ActionSuggestedBinding(instance, mSqueezeTriggerAction,
+            "/user/hand/left/input/squeeze/click"));
+        picoBindings.push_back(ActionSuggestedBinding(instance, mSqueezeTriggerAction,
+            "/user/hand/right/input/squeeze/click"));
+        // Pico 4 has no thumbrest — mThumbRestTouchAction left unmapped
+
+        XrInteractionProfileSuggestedBinding picoBind = {};
+        picoBind.type                   = XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING;
+        picoBind.interactionProfile     = picoProfilePath;
+        picoBind.suggestedBindings      = picoBindings.data();
+        picoBind.countSuggestedBindings = static_cast<uint32_t>(picoBindings.size());
+        const XrResult picoResult = xrSuggestInteractionProfileBindings(instance, &picoBind);
+        if (picoResult != XR_SUCCESS) {
+            ALOGW("Pico 4 controller profile suggestion failed ({})", picoResult);
+        }
+    }
+
+    {
         // Attach to session
         XrSessionActionSetsAttachInfo attachInfo = {};
         attachInfo.type                          = XR_TYPE_SESSION_ACTION_SETS_ATTACH_INFO;
@@ -212,7 +269,8 @@ InputStateStatic::~InputStateStatic() {
 
 XrActionStateBoolean SyncButtonState(const XrSession& session,
                                      const XrAction&  action,
-                                     const XrPath&    subactionPath = XR_NULL_PATH) {
+                                     const XrPath&    subactionPath = XR_NULL_PATH,
+                                     bool             failOnError = true) {
     XrActionStateGetInfo getInfo = {};
     getInfo.type                 = XR_TYPE_ACTION_STATE_GET_INFO;
     getInfo.action               = action;
@@ -221,7 +279,8 @@ XrActionStateBoolean SyncButtonState(const XrSession& session,
     XrActionStateBoolean state = {};
     state.type                 = XR_TYPE_ACTION_STATE_BOOLEAN;
 
-    OXR(xrGetActionStateBoolean(session, &getInfo, &state));
+    const XrResult result = xrGetActionStateBoolean(session, &getInfo, &state);
+    OXR_CheckErrors(result, "xrGetActionStateBoolean(session, &getInfo, &state)", failOnError);
     return state;
 }
 
@@ -273,17 +332,21 @@ void InputStateFrame::SyncButtonsAndThumbSticks(
     mThumbStickClickState[RIGHT_CONTROLLER] = SyncButtonState(
         session, staticState->mThumbClickAction, staticState->mRightHandSubactionPath);
 
-    // Sync thumbrest touch states
+    // Sync thumbrest touch states (Oculus-only; non-fatal since Pico has no thumbrest binding).
     mThumbrestTouchState[LEFT_CONTROLLER] = SyncButtonState(
-        session, staticState->mThumbRestTouchAction, staticState->mLeftHandSubactionPath);
+        session, staticState->mThumbRestTouchAction, staticState->mLeftHandSubactionPath,
+        /*failOnError=*/false);
     mThumbrestTouchState[RIGHT_CONTROLLER] = SyncButtonState(
-        session, staticState->mThumbRestTouchAction, staticState->mRightHandSubactionPath);
+        session, staticState->mThumbRestTouchAction, staticState->mRightHandSubactionPath,
+        /*failOnError=*/false);
 
-    // Sync index trigger states
+    // Sync index trigger states. These actions have no subaction paths (per-hand actions),
+    // so XR_NULL_PATH must be used — passing a subaction path is spec-invalid and
+    // causes XR_ERROR_PATH_UNSUPPORTED on strict runtimes like Pico.
     mIndexTriggerState[LEFT_CONTROLLER] = SyncButtonState(
-        session, staticState->mLeftHandIndexTriggerAction, staticState->mLeftHandSubactionPath);
+        session, staticState->mLeftHandIndexTriggerAction);
     mIndexTriggerState[RIGHT_CONTROLLER] = SyncButtonState(
-        session, staticState->mRightHandIndexTriggerAction, staticState->mRightHandSubactionPath);
+        session, staticState->mRightHandIndexTriggerAction);
 
     // Sync squeeze trigger states
     mSqueezeTriggerState[LEFT_CONTROLLER] = SyncButtonState(

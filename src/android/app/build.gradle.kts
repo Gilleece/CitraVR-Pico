@@ -80,7 +80,10 @@ android {
                 arguments(
                     "-DENABLE_QT=0", // Don't use QT
                     "-DENABLE_SDL2=0", // Don't use SDL
-                    "-DANDROID_ARM_NEON=true" // cryptopp requires Neon to work
+                    "-DANDROID_ARM_NEON=true", // cryptopp requires Neon to work
+                    "-DANDROID_LD=lld", // Use lld linker to fix LTO with NDK r22+
+                    "-DPYTHON_EXECUTABLE=C:/Users/WindowsBaguette/AppData/Local/Programs/Python/Python314/python.exe",
+                    "-DGLSLANG=C:/Users/WindowsBaguette/AppData/Local/Android/Sdk/emulator/lib64/vulkan/glslangValidator.exe"
                 )
             }
         }

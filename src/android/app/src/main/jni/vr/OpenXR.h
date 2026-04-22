@@ -26,6 +26,14 @@ License     :   Licensed under GPLv3 or any later version.
 #define OXR(func) OXR_CheckErrors(func, #func, true);
 void OXR_CheckErrors(XrResult result, const char* function, bool failOnError);
 
+struct XrOptionalExtensions {
+    bool hasFbPassthrough              = false;
+    bool hasFbCompositionLayerSettings = false;
+    bool hasMetaPerformanceMetrics     = false;
+    bool hasBdControllerInteraction    = false;
+};
+extern XrOptionalExtensions gOptionalExtensions;
+
 class OpenXr {
 
 public:
