@@ -197,12 +197,12 @@ XrInstance XrInstanceCreate(JavaVM* jvm, jobject activityObject) {
             if (strcmp(opt.name, ext.extensionName) == 0) {
                 *opt.flag = true;
                 enabledExtensions.push_back(opt.name);
-                ALOGD("Optional extension available: {}", opt.name);
+                ALOGI("Optional extension available: {}", opt.name);
                 break;
             }
         }
         if (!*opt.flag) {
-            ALOGD("Optional extension not available (skipping): {}", opt.name);
+            ALOGI("Optional extension not available (skipping): {}", opt.name);
         }
     }
 

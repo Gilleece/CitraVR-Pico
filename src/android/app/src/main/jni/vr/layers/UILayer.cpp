@@ -303,14 +303,19 @@ int UILayer::CreateSwapchain() {
             int64_t               format;
             XrSwapchainUsageFlags usageFlags;
         };
+        // Try all alpha-capable formats before format=0 (runtime default).
+        // On Pico, format=0 resolves to RGBX_8888 (no alpha), making transparent UI layers
+        // render as opaque black rectangles. format=1 = RGBA_8888, format=5 = BGRA_8888,
+        // 0x8058 = GL_RGBA8 — all have an alpha channel.
         static const SwapchainParams kCandidates[] = {
-            {0,      0},
-            {0,      XR_SWAPCHAIN_USAGE_SAMPLED_BIT},
             {1,      XR_SWAPCHAIN_USAGE_SAMPLED_BIT},
             {1,      0},
             {5,      XR_SWAPCHAIN_USAGE_SAMPLED_BIT},
             {5,      0},
             {0x8058, XR_SWAPCHAIN_USAGE_SAMPLED_BIT | XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT},
+            {0x8058, 0},
+            {0,      XR_SWAPCHAIN_USAGE_SAMPLED_BIT},
+            {0,      0},
         };
         bool swapchainCreated = false;
         for (const auto& p : kCandidates) {
@@ -330,8 +335,12 @@ int UILayer::CreateSwapchain() {
             const XrResult result = pfnCreateSwapchainAndroidSurfaceKHR(
                 mSession, &swapchainCreateInfo, &mSwapchain.mHandle, &mSurface);
             if (result == XR_SUCCESS) {
-                ALOGD("UILayer: swapchain created format={} usageFlags=0x{:x}", p.format,
+                ALOGI("UILayer: swapchain created format={} usageFlags=0x{:x}", p.format,
                       p.usageFlags);
+                if (p.format == 0) {
+                    ALOGW("UILayer: format=0 (runtime default) selected — may be RGBX_8888 "
+                          "(no alpha) on Pico, causing UI layers to appear as opaque black");
+                }
                 swapchainCreated = true;
                 break;
             }

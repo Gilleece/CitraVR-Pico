@@ -333,8 +333,8 @@ private:
                    static_cast<int32_t>(VRSettings::VREnvironmentType::VOID) ||
                VRSettings::values.vr_environment ==
                    static_cast<int32_t>(VRSettings::VREnvironmentType::PASSTHROUGH));
-        // If user set "Void" in settings, or the runtime doesn't support FB passthrough
-        // (e.g. Pico), skip passthrough layer creation entirely.
+        ALOGI("InitLayers(): hasFbPassthrough={}, vr_environment={}",
+              gOptionalExtensions.hasFbPassthrough, VRSettings::values.vr_environment);
         if (VRSettings::values.vr_environment !=
                 static_cast<int32_t>(VRSettings::VREnvironmentType::VOID) &&
             gOptionalExtensions.hasFbPassthrough) {
@@ -431,8 +431,11 @@ private:
         //////////////////////////////////////////////////
 
         // enable toggle when menu is set to main. Otherwise, always on (super immersive disabled).
-        const bool showUIRibbon = appState.mLowerMenuType == LowerMenuType::POSITIONAL_MENU ||
-                                  appState.mIsLowerMenuToggledOn;
+        // On Pico, VirtualDisplay-backed UILayers don't render (compositor shader fails).
+        // Never show the ribbon on Pico to avoid displaying the app-mirror fallback.
+        const bool showUIRibbon = !VRSettings::IsPico() &&
+                                  (appState.mLowerMenuType == LowerMenuType::POSITIONAL_MENU ||
+                                   appState.mIsLowerMenuToggledOn);
 
         float      immersiveModeFactor    = (VRSettings::values.vr_immersive_mode < 2)
                                                 ? immersiveScaleFactor[VRSettings::values.vr_immersive_mode]
@@ -473,7 +476,8 @@ private:
 
             if (showUIRibbon) { mRibbonLayer->Frame(gOpenXr->mLocalSpace, layers, layerCount); }
             const bool showLowerPanel =
-                showUIRibbon && appState.mLowerMenuType == LowerMenuType::MAIN_MENU;
+                (showUIRibbon || VRSettings::IsPico()) &&
+                appState.mLowerMenuType == LowerMenuType::MAIN_MENU;
             if (showLowerPanel) {
                 mGameSurfaceLayer->FrameLowerPanel(gOpenXr->mLocalSpace, layers, layerCount,
                                                    immersiveModeFactor);
@@ -875,13 +879,17 @@ private:
 
         if (mIsLayersInitialized && newState.mNumPanelResets > mLastAppState.mNumPanelResets) {
             mGameSurfaceLayer->ResetPanelPositions();
-            mRibbonLayer->SetPanelWithPose(mGameSurfaceLayer->GetLowerPanelPose());
+            if (!VRSettings::IsPico()) {
+                mRibbonLayer->SetPanelWithPose(mGameSurfaceLayer->GetLowerPanelPose());
+            }
         }
 
         if (mIsLayersInitialized && newState.mIsHorizontalAxisLocked &&
             !mLastAppState.mIsHorizontalAxisLocked) {
             mGameSurfaceLayer->ResetPanelPositions();
-            mRibbonLayer->SetPanelWithPose(mGameSurfaceLayer->GetLowerPanelPose());
+            if (!VRSettings::IsPico()) {
+                mRibbonLayer->SetPanelWithPose(mGameSurfaceLayer->GetLowerPanelPose());
+            }
         }
     }
 

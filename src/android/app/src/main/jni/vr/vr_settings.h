@@ -50,4 +50,10 @@ struct Values {
     std::string            vr_immersive_eye_indicator;
 } extern values;
 
+// Returns true for all Pico device types (UILayer/VirtualDisplay doesn't work on Pico runtime)
+inline bool IsPico() {
+    const auto t = values.hmd_type;
+    return t == HMDType::PICO4 || t == HMDType::PICO4ULTRA || t == HMDType::TEST_NON_VR;
+}
+
 } // namespace VRSettings

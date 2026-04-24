@@ -142,6 +142,12 @@ class VrKeyboardView : LinearLayout {
         addModifierKeyHandlers()
     }
 
+    // Returns the cursor position, treating -1 (no focus/selection) as end-of-text.
+    private fun cursorPos(): Int {
+        val pos = mEditText!!.selectionStart
+        return if (pos < 0) mEditText!!.text.length else pos
+    }
+
     private fun addModifierKeyHandlers() {
         findViewById<View>(R.id.keyShift).setOnTouchListener { _, event ->
             if (event.action == MotionEvent.ACTION_DOWN) {
@@ -155,8 +161,7 @@ class VrKeyboardView : LinearLayout {
             if (event.action == MotionEvent.ACTION_DOWN) {
                 val text = mEditText!!.text.toString()
                 if (text.length > 0) {
-                    // Delete character before cursor
-                    val position = mEditText!!.selectionStart
+                    val position = cursorPos()
                     if (position > 0) {
                         val newText = text.substring(0, position - 1) + text.substring(position)
                         mEditText!!.setText(newText)
@@ -168,7 +173,7 @@ class VrKeyboardView : LinearLayout {
         }
         findViewById<View>(R.id.keySpace).setOnTouchListener { _, event ->
             if (event.action == MotionEvent.ACTION_DOWN) {
-                val position = mEditText!!.selectionStart
+                val position = cursorPos()
                 if (position < mEditText!!.text.length) {
                     val newText = mEditText!!.text.toString().substring(0, position) + " " +
                             mEditText!!.text.toString().substring(position)
@@ -182,7 +187,7 @@ class VrKeyboardView : LinearLayout {
         }
         findViewById<View>(R.id.keyLeft).setOnTouchListener { _, event ->
             if (event.action == MotionEvent.ACTION_DOWN) {
-                val position = mEditText!!.selectionStart
+                val position = cursorPos()
                 if (position > 0) {
                     mEditText!!.setSelection(position - 1)
                 }
@@ -191,7 +196,7 @@ class VrKeyboardView : LinearLayout {
         }
         findViewById<View>(R.id.keyRight).setOnTouchListener { _, event ->
             if (event.action == MotionEvent.ACTION_DOWN) {
-                val position = mEditText!!.selectionStart
+                val position = cursorPos()
                 if (position < mEditText!!.text.length) {
                     mEditText!!.setSelection(position + 1)
                 }
@@ -229,7 +234,7 @@ class VrKeyboardView : LinearLayout {
                     val key = child
                     key.setOnTouchListener { _, event ->
                         if (event.action == MotionEvent.ACTION_DOWN) {
-                            val position = mEditText!!.selectionStart
+                            val position = cursorPos()
                             if (position < mEditText!!.text.length) {
                                 val newText = mEditText!!.text.toString().substring(0, position) +
                                         key.text.toString() +
