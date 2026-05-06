@@ -99,7 +99,9 @@ endif()
 
 # Oaknut
 if ("arm64" IN_LIST ARCHITECTURE)
+    set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
     add_subdirectory(oaknut EXCLUDE_FROM_ALL)
+    set(BUILD_TESTING ON CACHE BOOL "" FORCE)
 endif()
 
 # Dynarmic

@@ -17,6 +17,31 @@ include(CMakeDependentOption)
 
 project(citra LANGUAGES C CXX ASM)
 
+if (ANDROID)
+    # Force LLD linker and strip legacy gold linker flags
+    set(LINKER_FLAGS_TO_FIX
+        CMAKE_EXE_LINKER_FLAGS
+        CMAKE_SHARED_LINKER_FLAGS
+        CMAKE_MODULE_LINKER_FLAGS
+        CMAKE_EXE_LINKER_FLAGS_RELEASE
+        CMAKE_SHARED_LINKER_FLAGS_RELEASE
+        CMAKE_MODULE_LINKER_FLAGS_RELEASE
+        CMAKE_EXE_LINKER_FLAGS_DEBUG
+        CMAKE_SHARED_LINKER_FLAGS_DEBUG
+        CMAKE_MODULE_LINKER_FLAGS_DEBUG
+        CMAKE_EXE_LINKER_FLAGS_RELWITHDEBINFO
+        CMAKE_SHARED_LINKER_FLAGS_RELWITHDEBINFO
+        CMAKE_MODULE_LINKER_FLAGS_RELWITHDEBINFO
+    )
+
+    foreach(flag_var ${LINKER_FLAGS_TO_FIX})
+        if(${flag_var})
+            string(REPLACE "-fuse-ld=gold" "" ${flag_var} "${${flag_var}}")
+        endif()
+        set(${flag_var} "${${flag_var}} -fuse-ld=lld" CACHE STRING "" FORCE)
+    endforeach()
+endif()
+
 # Some submodules like to pick their own default build type if not specified.
 # Make sure we default to Release build type always, unless the generator has custom types.
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
