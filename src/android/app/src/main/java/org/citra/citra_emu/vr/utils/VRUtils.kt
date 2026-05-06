@@ -23,7 +23,7 @@ object VRUtils {
         QUEST3S(5),
         PICO4(6),
         PICO4ULTRA(7),
-        TEST_NON_VR(8)
+        FALLBACK_HMD(8)
     }
 
     enum class Hotkey(val button: Int) {

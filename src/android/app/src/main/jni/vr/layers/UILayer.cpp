@@ -162,7 +162,7 @@ XrVector2f GetDensityScaleForSize(const int32_t texWidth, const int32_t texHeigh
 float AndroidSurfaceHeightSign() {
     using VRSettings::HMDType;
     const auto t = VRSettings::values.hmd_type;
-    if (t == HMDType::PICO4 || t == HMDType::PICO4ULTRA || t == HMDType::TEST_NON_VR) {
+    if (t == HMDType::PICO4 || t == HMDType::PICO4ULTRA || t == HMDType::FALLBACK_HMD) {
         return 1.0f;
     }
     return -1.0f;

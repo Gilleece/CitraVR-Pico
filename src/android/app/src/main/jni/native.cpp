@@ -186,7 +186,7 @@ static Core::System::ResultStatus RunCitra(const std::string& filepath) {
     const auto picoHmdType = VRSettings::HmdTypeFromStr(VRSettings::GetHMDTypeStr());
     const bool isRunningOnPico = (picoHmdType == VRSettings::HMDType::PICO4 ||
                                   picoHmdType == VRSettings::HMDType::PICO4ULTRA ||
-                                  picoHmdType == VRSettings::HMDType::TEST_NON_VR);
+                                  picoHmdType == VRSettings::HMDType::FALLBACK_HMD);
     if (isRunningOnPico) {
         Settings::values.lle_applets.SetValue(true);
     }

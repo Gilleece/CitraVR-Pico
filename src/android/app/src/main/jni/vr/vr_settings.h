@@ -25,7 +25,7 @@ License     :   Licensed under GPLv3 or any later version.
 namespace VRSettings {
 
 // NOTE: keep this in-sync with HMDType in sync with VRUtils.java
-enum class HMDType { UNKNOWN = 0, QUEST1, QUEST2, QUEST3, QUESTPRO, QUEST3S, PICO4, PICO4ULTRA, TEST_NON_VR };
+enum class HMDType { UNKNOWN = 0, QUEST1, QUEST2, QUEST3, QUESTPRO, QUEST3S, PICO4, PICO4ULTRA, FALLBACK_HMD };
 
 enum class VREnvironmentType { PASSTHROUGH = 1, VOID = 2 };
 
@@ -53,7 +53,7 @@ struct Values {
 // Returns true for all Pico device types (UILayer/VirtualDisplay doesn't work on Pico runtime)
 inline bool IsPico() {
     const auto t = values.hmd_type;
-    return t == HMDType::PICO4 || t == HMDType::PICO4ULTRA || t == HMDType::TEST_NON_VR;
+    return t == HMDType::PICO4 || t == HMDType::PICO4ULTRA || t == HMDType::FALLBACK_HMD;
 }
 
 } // namespace VRSettings

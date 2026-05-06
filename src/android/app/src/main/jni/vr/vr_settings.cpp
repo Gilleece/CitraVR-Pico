@@ -34,8 +34,8 @@ HMDType HmdTypeFromStr(const std::string& hmdType) {
         return HMDType::PICO4;
     } else if (hmdType == "A8650" || hmdType == "PICO 4 Ultra" || hmdType == "pico 4 ultra") {
         return HMDType::PICO4ULTRA;
-    } else if (hmdType == "B3110") {
-        return HMDType::TEST_NON_VR;
+    } else {
+        return HMDType::FALLBACK_HMD;
     }
     return HMDType::UNKNOWN;
 }

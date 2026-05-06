@@ -162,7 +162,7 @@ uint32_t GetDefaultGameResolutionFactorForHmd(const VRSettings::HMDType& hmdType
         case VRSettings::HMDType::QUEST3S:
         case VRSettings::HMDType::PICO4:
         case VRSettings::HMDType::PICO4ULTRA:
-        case VRSettings::HMDType::TEST_NON_VR:
+        case VRSettings::HMDType::FALLBACK_HMD:
             return kDefaultResolutionFactor;
     }
 }
