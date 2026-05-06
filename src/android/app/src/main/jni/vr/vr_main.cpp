@@ -241,6 +241,24 @@ public:
             if (appState.mIsXrSessionActive && appState.mHasFocus && !mIsLayersInitialized) {
                 InitLayers(jni);
             }
+            if (appState.mIsXrSessionActive && !mIsLayersInitialized) {
+                // Layers aren't ready yet (session active but not yet FOCUSED, or InitLayers
+                // hasn't run). Submit empty frames so the Pico runtime can advance through its
+                // loading overlay state machine. Without this, the overlay hangs indefinitely
+                // because the runtime waits for frame submissions before progressing to FOCUSED.
+                XrFrameState    frameState = {XR_TYPE_FRAME_STATE, nullptr};
+                XrFrameWaitInfo wfi        = {XR_TYPE_FRAME_WAIT_INFO, nullptr};
+                OXR(xrWaitFrame(gOpenXr->mSession, &wfi, &frameState));
+                XrFrameBeginInfo bfi = {XR_TYPE_FRAME_BEGIN_INFO, nullptr};
+                OXR(xrBeginFrame(gOpenXr->mSession, &bfi));
+                XrFrameEndInfo efi   = {XR_TYPE_FRAME_END_INFO, nullptr};
+                efi.displayTime          = frameState.predictedDisplayTime;
+                efi.environmentBlendMode = XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
+                efi.layerCount           = 0;
+                efi.layers               = nullptr;
+                OXR(xrEndFrame(gOpenXr->mSession, &efi));
+            }
+
             if (appState.mIsXrSessionActive && mIsLayersInitialized) {
                 // Increment the frame index.
                 // Frame index starts at 1. I don't know why, we've always done this.
