@@ -30,10 +30,12 @@
         android:name="android.hardware.opengles.aep"
         android:required="true" />
 
-    <uses-feature android:name="com.oculus.feature.PASSTHROUGH" android:required="true" />
+    <uses-feature android:name="com.oculus.feature.PASSTHROUGH" android:required="false" />
     <uses-feature android:name="com.oculus.feature.BOUNDARYLESS_APP" android:required="false" />
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -129,9 +131,12 @@
             android:resizeableActivity="false"
             android:screenOrientation="landscape"
             android:theme="@style/VRTheme">
+            <!-- Pico runtime reads this to authorize xrCreateInstance for VR apps -->
+            <meta-data android:name="pvr.app.type" android:value="vr" />
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="com.oculus.intent.category.VR" />
+                <category android:name="pvr.intent.category.VR" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>

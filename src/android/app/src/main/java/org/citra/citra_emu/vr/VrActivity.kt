@@ -8,6 +8,7 @@ import android.content.Intent
 import android.hardware.display.DisplayManager
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.view.Display
@@ -23,16 +24,19 @@ import org.citra.citra_emu.fragments.EmulationFragment.Companion
 import org.citra.citra_emu.ui.main.MainActivity
 import org.citra.citra_emu.utils.EmulationMenuSettings
 import org.citra.citra_emu.utils.Log
+import java.io.File
 import kotlin.system.exitProcess
 
 
 class VrActivity : EmulationActivity() {
     private var mHandle: Long = 0
     private var clickRunnable = ClickRunnable()
+    private var logcatProcess: Process? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         Log.info("VR [Java] onCreate()");
         super.onCreate(savedInstanceState)
+        startLogCapture()
         if (hasRun) {
             Log.info("VR [Java] VRActivity already existed")
             finish()
@@ -52,6 +56,7 @@ class VrActivity : EmulationActivity() {
 
     override fun onDestroy() {
        Log.info("VR [Java] onDestroy");
+        stopLogCapture()
         currentActivity = null
         if (mHandle != 0L) {
             nativeOnDestroy(mHandle)
@@ -135,6 +140,39 @@ class VrActivity : EmulationActivity() {
         // Note: isRunning() checks to make sure the emulation has started and pausing it is
         // safe -- not whether it's paused/resumed
          NativeLibrary.unPauseEmulation();
+    }
+
+    private fun startLogCapture() {
+        try {
+            // Try Downloads/CitraVR/ first — visible in the Pico file manager without navigating
+            // into Android/data. Falls back to app-specific storage if write access is denied
+            // (enforced on Android 11+ without MANAGE_EXTERNAL_STORAGE).
+            val logDir = try {
+                val downloadsDir = Environment.getExternalStoragePublicDirectory(
+                    Environment.DIRECTORY_DOWNLOADS)
+                val citraDir = File(downloadsDir, "CitraVR")
+                citraDir.mkdirs()
+                if (citraDir.canWrite()) citraDir else null
+            } catch (e: Exception) { null }
+                ?: getExternalFilesDir(null)?.also { it.mkdirs() }
+                ?: filesDir.also { it.mkdirs() }
+
+            val logFile = File(logDir, "citravr_log.txt")
+            val prevLogFile = File(logDir, "citravr_log_prev.txt")
+            if (logFile.exists()) logFile.renameTo(prevLogFile)
+            Log.info("VR [Log] Capturing logcat to: ${logFile.absolutePath}")
+            logcatProcess = ProcessBuilder("logcat", "-v", "time")
+                .redirectOutput(logFile)
+                .redirectErrorStream(true)
+                .start()
+        } catch (e: Exception) {
+            Log.error("VR [Log] Failed to start log capture: ${e.message}")
+        }
+    }
+
+    private fun stopLogCapture() {
+        logcatProcess?.destroy()
+        logcatProcess = null
     }
 
     class ClickRunnable : Runnable {

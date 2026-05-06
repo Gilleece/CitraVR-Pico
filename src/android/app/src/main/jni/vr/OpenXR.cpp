@@ -30,7 +30,8 @@ License     :   Licensed under GPLv3 or any later version.
         }                                                                                          \
     } while (0)
 
-XrInstance instance = XR_NULL_HANDLE;
+XrInstance              instance            = XR_NULL_HANDLE;
+XrOptionalExtensions    gOptionalExtensions = {};
 void       OXR_CheckErrors(XrResult result, const char* function, bool failOnError) {
           if (XR_FAILED(result)) {
               if (instance == XR_NULL_HANDLE) {
@@ -153,23 +154,57 @@ int XrCheckRequiredExtensions(const char* const* requiredExtensionNames,
     return 0;
 }
 
-XrInstance XrInstanceCreate() {
-    // Check that the extensions required are present.
+XrInstance XrInstanceCreate(JavaVM* jvm, jobject activityObject) {
+    // Extensions required on every OpenXR runtime.
     static const char* const requiredExtensionNames[] = {
         XR_KHR_OPENGL_ES_ENABLE_EXTENSION_NAME,
         XR_EXT_PERFORMANCE_SETTINGS_EXTENSION_NAME,
         XR_KHR_ANDROID_THREAD_SETTINGS_EXTENSION_NAME,
         XR_KHR_COMPOSITION_LAYER_EQUIRECT2_EXTENSION_NAME,
         XR_KHR_ANDROID_SURFACE_SWAPCHAIN_EXTENSION_NAME,
-        XR_FB_COMPOSITION_LAYER_SETTINGS_EXTENSION_NAME,
-        XR_FB_PASSTHROUGH_EXTENSION_NAME,
-        XR_META_PERFORMANCE_METRICS_EXTENSION_NAME,
     };
     static constexpr size_t numRequiredExtensions =
         sizeof(requiredExtensionNames) / sizeof(requiredExtensionNames[0]);
 
     BAIL_ON_ERR(XrCheckRequiredExtensions(&requiredExtensionNames[0], numRequiredExtensions),
                 XR_NULL_HANDLE);
+
+    // Optional vendor extensions — enabled when available, absent on non-Meta runtimes (e.g. Pico).
+    struct OptionalExt {
+        const char* name;
+        bool*       flag;
+    };
+    OptionalExt optionalExtensions[] = {
+        {XR_FB_COMPOSITION_LAYER_SETTINGS_EXTENSION_NAME,
+         &gOptionalExtensions.hasFbCompositionLayerSettings},
+        {XR_FB_PASSTHROUGH_EXTENSION_NAME,          &gOptionalExtensions.hasFbPassthrough},
+        {XR_META_PERFORMANCE_METRICS_EXTENSION_NAME, &gOptionalExtensions.hasMetaPerformanceMetrics},
+        {"XR_BD_controller_interaction",             &gOptionalExtensions.hasBdControllerInteraction},
+    };
+
+    // Enumerate available extensions once and check which optional ones are present.
+    uint32_t numAvailable = 0;
+    xrEnumerateInstanceExtensionProperties(nullptr, 0, &numAvailable, nullptr);
+    std::vector<XrExtensionProperties> available(numAvailable,
+                                                  XrExtensionProperties{XR_TYPE_EXTENSION_PROPERTIES});
+    xrEnumerateInstanceExtensionProperties(nullptr, numAvailable, &numAvailable, available.data());
+
+
+    std::vector<const char*> enabledExtensions(requiredExtensionNames,
+                                               requiredExtensionNames + numRequiredExtensions);
+    for (auto& opt : optionalExtensions) {
+        for (const auto& ext : available) {
+            if (strcmp(opt.name, ext.extensionName) == 0) {
+                *opt.flag = true;
+                enabledExtensions.push_back(opt.name);
+                ALOGI("Optional extension available: {}", opt.name);
+                break;
+            }
+        }
+        if (!*opt.flag) {
+            ALOGI("Optional extension not available (skipping): {}", opt.name);
+        }
+    }
 
     XrApplicationInfo appInfo = {};
     strcpy(appInfo.applicationName, "Citra");
@@ -178,19 +213,26 @@ XrInstance XrInstanceCreate() {
     appInfo.engineVersion = 0;
     appInfo.apiVersion    = XR_CURRENT_API_VERSION;
 
+    XrInstanceCreateInfoAndroidKHR instanceCreateInfoAndroid = {};
+    instanceCreateInfoAndroid.type                = XR_TYPE_INSTANCE_CREATE_INFO_ANDROID_KHR;
+    instanceCreateInfoAndroid.next                = nullptr;
+    instanceCreateInfoAndroid.applicationVM       = jvm;
+    instanceCreateInfoAndroid.applicationActivity = activityObject;
+
     XrInstanceCreateInfo ici  = {};
     ici.type                  = XR_TYPE_INSTANCE_CREATE_INFO;
-    ici.next                  = nullptr;
+    ici.next                  = &instanceCreateInfoAndroid;
     ici.createFlags           = 0;
     ici.applicationInfo       = appInfo;
     ici.enabledApiLayerCount  = 0;
     ici.enabledApiLayerNames  = NULL;
-    ici.enabledExtensionCount = numRequiredExtensions;
-    ici.enabledExtensionNames = requiredExtensionNames;
+    ici.enabledExtensionCount = static_cast<uint32_t>(enabledExtensions.size());
+    ici.enabledExtensionNames = enabledExtensions.data();
 
     XrResult   initResult;
-    XrInstance instanceLocal;
-    OXR(initResult = xrCreateInstance(&ici, &instanceLocal));
+    XrInstance instanceLocal = XR_NULL_HANDLE;
+    initResult               = xrCreateInstance(&ici, &instanceLocal);
+    OXR_CheckErrors(initResult, "xrCreateInstance", /*failOnError=*/true);
     if (initResult != XR_SUCCESS) {
         ALOGE("ERROR({}()): Failed to create XR mInstance: {}.", __FUNCTION__, initResult);
         return XR_NULL_HANDLE;
@@ -221,9 +263,14 @@ int32_t XrInitializeLoaderTrampoline(JavaVM* jvm, jobject activityObject) {
         loaderInitializeInfoAndroid.next               = NULL;
         loaderInitializeInfoAndroid.applicationVM      = jvm;
         loaderInitializeInfoAndroid.applicationContext = activityObject;
-        xrInitializeLoaderKHR((XrLoaderInitInfoBaseHeaderKHR*)&loaderInitializeInfoAndroid);
+        const XrResult loaderResult =
+            xrInitializeLoaderKHR((XrLoaderInitInfoBaseHeaderKHR*)&loaderInitializeInfoAndroid);
+        if (XR_FAILED(loaderResult)) {
+            ALOGE("xrInitializeLoaderKHR failed: 0x{:x}", (int)loaderResult);
+            return -1;
+        }
     } else {
-        ALOGE("{}(): xrInitializeLoaderKHR is NULL", __FUNCTION__);
+        ALOGE("xrInitializeLoaderKHR function pointer is null");
         return -1;
     }
     return 0;
@@ -454,7 +501,7 @@ int OpenXr::OpenXRInit(JavaVM* const jvm, const jobject activityObject) {
     /////////////////////////////////////
     // Create the OpenXR instance.
     /////////////////////////////////////
-    mInstance = XrInstanceCreate();
+    mInstance = XrInstanceCreate(jvm, activityObject);
     if (mInstance == XR_NULL_HANDLE) {
         ALOGE("Failed to create XR instance");
         return -2;

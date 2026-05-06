@@ -1,9 +1,8 @@
 package org.citra.citra_emu.vr.ui
 
 import android.view.View
+import android.view.WindowManager
 import android.widget.EditText
-import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsCompat
 import org.citra.citra_emu.R
 import org.citra.citra_emu.vr.VrActivity
 
@@ -11,12 +10,12 @@ class VrKeyboardLayer(activity: VrActivity) : VrUILayer(activity, R.layout.vr_ke
 
     override fun onSurfaceCreated() {
         super.onSurfaceCreated()
-        var editText : EditText = window?.findViewById<View>(R.id.vrKeyboardText) as EditText
-        editText!!.apply {
-            // Needed to show cursor onscreen.
-            requestFocus()
-            WindowCompat.getInsetsController(window!!, window?.decorView!!)
-                .show(WindowInsetsCompat.Type.ime())
-        }
+        // Suppress the system IME at window and view level.
+        // On Pico's VR runtime, showing the system soft keyboard crashes the app.
+        // Do NOT call requestFocus() on the EditText — it triggers the system IME on Pico
+        // even with all suppression flags set. VrKeyboardView handles input via touch listeners.
+        window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN)
+        val editText = window?.findViewById<View>(R.id.vrKeyboardText) as EditText
+        editText.setShowSoftInputOnFocus(false)
     }
 }

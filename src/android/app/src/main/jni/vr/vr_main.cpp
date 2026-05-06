@@ -160,6 +160,9 @@ uint32_t GetDefaultGameResolutionFactorForHmd(const VRSettings::HMDType& hmdType
         case VRSettings::HMDType::QUEST2:
         case VRSettings::HMDType::QUESTPRO:
         case VRSettings::HMDType::QUEST3S:
+        case VRSettings::HMDType::PICO4:
+        case VRSettings::HMDType::PICO4ULTRA:
+        case VRSettings::HMDType::FALLBACK_HMD:
             return kDefaultResolutionFactor;
     }
 }
@@ -231,7 +234,32 @@ public:
             AppState appState = HandleEvents(jni);
             if (appState.mIsStopRequested) { break; }
             HandleStateChanges(jni, appState);
-            if (appState.mIsXrSessionActive) {
+            // Defer layer creation until the session is FOCUSED. On Pico,
+            // xrCreateSwapchainAndroidSurfaceKHR is rejected (XR_ERROR_VALIDATION_FAILURE)
+            // in READY state — the forwardloader only allows it once the session has
+            // progressed to at least XR_SESSION_STATE_FOCUSED.
+            if (appState.mIsXrSessionActive && appState.mHasFocus && !mIsLayersInitialized) {
+                InitLayers(jni);
+            }
+            if (appState.mIsXrSessionActive && !mIsLayersInitialized) {
+                // Layers aren't ready yet (session active but not yet FOCUSED, or InitLayers
+                // hasn't run). Submit empty frames so the Pico runtime can advance through its
+                // loading overlay state machine. Without this, the overlay hangs indefinitely
+                // because the runtime waits for frame submissions before progressing to FOCUSED.
+                XrFrameState    frameState = {XR_TYPE_FRAME_STATE, nullptr};
+                XrFrameWaitInfo wfi        = {XR_TYPE_FRAME_WAIT_INFO, nullptr};
+                OXR(xrWaitFrame(gOpenXr->mSession, &wfi, &frameState));
+                XrFrameBeginInfo bfi = {XR_TYPE_FRAME_BEGIN_INFO, nullptr};
+                OXR(xrBeginFrame(gOpenXr->mSession, &bfi));
+                XrFrameEndInfo efi   = {XR_TYPE_FRAME_END_INFO, nullptr};
+                efi.displayTime          = frameState.predictedDisplayTime;
+                efi.environmentBlendMode = XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
+                efi.layerCount           = 0;
+                efi.layers               = nullptr;
+                OXR(xrEndFrame(gOpenXr->mSession, &efi));
+            }
+
+            if (appState.mIsXrSessionActive && mIsLayersInitialized) {
                 // Increment the frame index.
                 // Frame index starts at 1. I don't know why, we've always done this.
                 // Doesn't actually matter, except to make the indices
@@ -278,6 +306,43 @@ private:
             std::make_unique<InputStateStatic>(OpenXr::GetInstance(), gOpenXr->mSession);
 
         //////////////////////////////////////////////////
+        // Intialize JNI methods
+        //////////////////////////////////////////////////
+
+        mForwardVRInputMethodID =
+            jni->GetMethodID(jni->GetObjectClass(mActivityObject), "forwardVRInput", "(IZ)V");
+        if (mForwardVRInputMethodID == nullptr) { FAIL("could not get forwardVRInputMethodID"); }
+        mForwardVRJoystickMethodID =
+            jni->GetMethodID(jni->GetObjectClass(mActivityObject), "forwardVRJoystick", "(FFI)V");
+        if (mForwardVRJoystickMethodID == nullptr) {
+            FAIL("could not get forwardVRJoystickMethodID");
+        }
+
+        mSendClickToWindowMethodID =
+            jni->GetMethodID(jni->GetObjectClass(mActivityObject), "sendClickToWindow", "(FFI)V");
+        if (mSendClickToWindowMethodID == nullptr) {
+            FAIL("could not get sendClickToWindowMethodID");
+        }
+        mResumeGameMethodID =
+            jni->GetMethodID(jni->GetObjectClass(mActivityObject), "resumeGame", "()V");
+        if (mResumeGameMethodID == nullptr) { FAIL("could not get resumeGameMethodID"); }
+        mPauseGameMethodID =
+            jni->GetMethodID(jni->GetObjectClass(mActivityObject), "pauseGame", "()V");
+        if (mPauseGameMethodID == nullptr) { FAIL("could not get pauseGameMethodID"); }
+        mOpenSettingsMethodID =
+            jni->GetMethodID(jni->GetObjectClass(mActivityObject), "openSettingsMenu", "()V");
+        if (mOpenSettingsMethodID == nullptr) { FAIL("could not get openSettingsMenuMethodID"); }
+
+        if (VRSettings::values.vr_immersive_mode != 0) {
+            mLastAppState.mIsLowerMenuToggledOn = false;
+        }
+    }
+
+    void InitLayers(JNIEnv* jni) {
+        assert(!mIsLayersInitialized);
+        ALOGI("{}(): Initializing VR layers (session is ready)", __FUNCTION__);
+
+        //////////////////////////////////////////////////
         // Create the layers
         //////////////////////////////////////////////////
 
@@ -286,9 +351,11 @@ private:
                    static_cast<int32_t>(VRSettings::VREnvironmentType::VOID) ||
                VRSettings::values.vr_environment ==
                    static_cast<int32_t>(VRSettings::VREnvironmentType::PASSTHROUGH));
-        // If user set "Void" in settings, don't render passthrough
+        ALOGI("InitLayers(): hasFbPassthrough={}, vr_environment={}",
+              gOptionalExtensions.hasFbPassthrough, VRSettings::values.vr_environment);
         if (VRSettings::values.vr_environment !=
-            static_cast<int32_t>(VRSettings::VREnvironmentType::VOID)) {
+                static_cast<int32_t>(VRSettings::VREnvironmentType::VOID) &&
+            gOptionalExtensions.hasFbPassthrough) {
             mPassthroughLayer = std::make_unique<PassthroughLayer>(gOpenXr->mSession);
         }
 
@@ -333,37 +400,8 @@ private:
         // Create the cursor layer.
         mCursorLayer = std::make_unique<CursorLayer>(gOpenXr->mSession);
 
-        //////////////////////////////////////////////////
-        // Intialize JNI methods
-        //////////////////////////////////////////////////
-
-        mForwardVRInputMethodID =
-            jni->GetMethodID(jni->GetObjectClass(mActivityObject), "forwardVRInput", "(IZ)V");
-        if (mForwardVRInputMethodID == nullptr) { FAIL("could not get forwardVRInputMethodID"); }
-        mForwardVRJoystickMethodID =
-            jni->GetMethodID(jni->GetObjectClass(mActivityObject), "forwardVRJoystick", "(FFI)V");
-        if (mForwardVRJoystickMethodID == nullptr) {
-            FAIL("could not get forwardVRJoystickMethodID");
-        }
-
-        mSendClickToWindowMethodID =
-            jni->GetMethodID(jni->GetObjectClass(mActivityObject), "sendClickToWindow", "(FFI)V");
-        if (mSendClickToWindowMethodID == nullptr) {
-            FAIL("could not get sendClickToWindowMethodID");
-        }
-        mResumeGameMethodID =
-            jni->GetMethodID(jni->GetObjectClass(mActivityObject), "resumeGame", "()V");
-        if (mResumeGameMethodID == nullptr) { FAIL("could not get resumeGameMethodID"); }
-        mPauseGameMethodID =
-            jni->GetMethodID(jni->GetObjectClass(mActivityObject), "pauseGame", "()V");
-        if (mPauseGameMethodID == nullptr) { FAIL("could not get pauseGameMethodID"); }
-        mOpenSettingsMethodID =
-            jni->GetMethodID(jni->GetObjectClass(mActivityObject), "openSettingsMenu", "()V");
-        if (mOpenSettingsMethodID == nullptr) { FAIL("could not get openSettingsMenuMethodID"); }
-
-        if (VRSettings::values.vr_immersive_mode != 0) {
-            mLastAppState.mIsLowerMenuToggledOn = false;
-        }
+        mIsLayersInitialized = true;
+        ALOGI("{}(): VR layers initialized", __FUNCTION__);
     }
 
     void Frame(JNIEnv* jni, const AppState& appState) {
@@ -411,8 +449,11 @@ private:
         //////////////////////////////////////////////////
 
         // enable toggle when menu is set to main. Otherwise, always on (super immersive disabled).
-        const bool showUIRibbon = appState.mLowerMenuType == LowerMenuType::POSITIONAL_MENU ||
-                                  appState.mIsLowerMenuToggledOn;
+        // On Pico, VirtualDisplay-backed UILayers don't render (compositor shader fails).
+        // Never show the ribbon on Pico to avoid displaying the app-mirror fallback.
+        const bool showUIRibbon = !VRSettings::IsPico() &&
+                                  (appState.mLowerMenuType == LowerMenuType::POSITIONAL_MENU ||
+                                   appState.mIsLowerMenuToggledOn);
 
         float      immersiveModeFactor    = (VRSettings::values.vr_immersive_mode < 2)
                                                 ? immersiveScaleFactor[VRSettings::values.vr_immersive_mode]
@@ -453,7 +494,8 @@ private:
 
             if (showUIRibbon) { mRibbonLayer->Frame(gOpenXr->mLocalSpace, layers, layerCount); }
             const bool showLowerPanel =
-                showUIRibbon && appState.mLowerMenuType == LowerMenuType::MAIN_MENU;
+                (showUIRibbon || VRSettings::IsPico()) &&
+                appState.mLowerMenuType == LowerMenuType::MAIN_MENU;
             if (showLowerPanel) {
                 mGameSurfaceLayer->FrameLowerPanel(gOpenXr->mLocalSpace, layers, layerCount,
                                                    immersiveModeFactor);
@@ -477,6 +519,26 @@ private:
         std::vector<const XrCompositionLayerBaseHeader*> layerHeaders;
         for (uint32_t i = 0; i < layerCount; i++) {
             layerHeaders.push_back((const XrCompositionLayerBaseHeader*)&layers[i]);
+        }
+
+        // Diagnostic: log all layer imageRects on the first frame to find XR_ERROR_SWAPCHAIN_RECT_INVALID.
+        if (mFrameIndex <= 1) {
+            for (uint32_t i = 0; i < layerCount; i++) {
+                const XrCompositionLayerBaseHeader* h = layerHeaders[i];
+                XrSwapchainSubImage subImg = {};
+                if (h->type == XR_TYPE_COMPOSITION_LAYER_QUAD) {
+                    subImg = reinterpret_cast<const XrCompositionLayerQuad*>(h)->subImage;
+                } else if (h->type == XR_TYPE_COMPOSITION_LAYER_CYLINDER_KHR) {
+                    subImg = reinterpret_cast<const XrCompositionLayerCylinderKHR*>(h)->subImage;
+                } else {
+                    ALOGI("Layer[{}] type=0x{:x} (not quad/cylinder)", i, (uint32_t)h->type);
+                    continue;
+                }
+                ALOGI("Layer[{}] type=0x{:x} rect=off({},{}) ext({}x{})",
+                      i, (uint32_t)h->type,
+                      subImg.imageRect.offset.x, subImg.imageRect.offset.y,
+                      subImg.imageRect.extent.width, subImg.imageRect.extent.height);
+            }
         }
 
         ////////////////////////////////
@@ -833,14 +895,19 @@ private:
             }
         }
 
-        if (newState.mNumPanelResets > mLastAppState.mNumPanelResets) {
+        if (mIsLayersInitialized && newState.mNumPanelResets > mLastAppState.mNumPanelResets) {
             mGameSurfaceLayer->ResetPanelPositions();
-            mRibbonLayer->SetPanelWithPose(mGameSurfaceLayer->GetLowerPanelPose());
+            if (!VRSettings::IsPico()) {
+                mRibbonLayer->SetPanelWithPose(mGameSurfaceLayer->GetLowerPanelPose());
+            }
         }
 
-        if (newState.mIsHorizontalAxisLocked && !mLastAppState.mIsHorizontalAxisLocked) {
+        if (mIsLayersInitialized && newState.mIsHorizontalAxisLocked &&
+            !mLastAppState.mIsHorizontalAxisLocked) {
             mGameSurfaceLayer->ResetPanelPositions();
-            mRibbonLayer->SetPanelWithPose(mGameSurfaceLayer->GetLowerPanelPose());
+            if (!VRSettings::IsPico()) {
+                mRibbonLayer->SetPanelWithPose(mGameSurfaceLayer->GetLowerPanelPose());
+            }
         }
     }
 
@@ -1155,6 +1222,7 @@ private:
     uint64_t    mFrameIndex = 0;
     std::thread mThread;
     jobject     mActivityObject;
+    bool        mIsLayersInitialized = false;
 
     class AppState {
     public:

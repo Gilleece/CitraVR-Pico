@@ -59,6 +59,7 @@
 #include "video_core/gpu.h"
 #include "video_core/renderer_base.h"
 #include "vr/main_helper.h"
+#include "vr/vr_settings.h"
 
 #if defined(ENABLE_VULKAN) && CITRA_ARCH(arm64)
 #include <adrenotools/driver.h>
@@ -178,6 +179,18 @@ static Core::System::ResultStatus RunCitra(const std::string& filepath) {
 
     // Forces a config reload on game boot, if the user changed settings in the UI
     Config{};
+
+    // On Pico, force LLE applets so the 3DS's built-in keyboard renders on-screen
+    // instead of trying to use Android UI (which is incompatible with Pico's VR runtime).
+    // If the user hasn't installed 3DS firmware the APT service falls back to HLE automatically.
+    const auto picoHmdType = VRSettings::HmdTypeFromStr(VRSettings::GetHMDTypeStr());
+    const bool isRunningOnPico = (picoHmdType == VRSettings::HMDType::PICO4 ||
+                                  picoHmdType == VRSettings::HMDType::PICO4ULTRA ||
+                                  picoHmdType == VRSettings::HMDType::FALLBACK_HMD);
+    if (isRunningOnPico) {
+        Settings::values.lle_applets.SetValue(true);
+    }
+
     // Replace with game-specific settings
     u64 program_id{};
     FileUtil::SetCurrentRomPath(filepath);
@@ -198,7 +211,11 @@ static Core::System::ResultStatus RunCitra(const std::string& filepath) {
     // Register frontend applets
     Frontend::RegisterDefaultApplets(system);
     system.RegisterMiiSelector(std::make_shared<MiiSelector::AndroidMiiSelector>());
-    system.RegisterSoftwareKeyboard(std::make_shared<SoftwareKeyboard::AndroidKeyboard>());
+    // On Pico: don't register AndroidKeyboard — LLE applets handles it if firmware is present,
+    // otherwise DefaultKeyboard (registered above) fills in the 3DS username without freezing.
+    if (!isRunningOnPico) {
+        system.RegisterSoftwareKeyboard(std::make_shared<SoftwareKeyboard::AndroidKeyboard>());
+    }
 
     // Register microphone permission check
     system.RegisterMicPermissionCheck(&CheckMicPermission);

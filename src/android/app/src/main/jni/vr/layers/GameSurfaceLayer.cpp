@@ -221,6 +221,17 @@ XrVector2f GetDensityScaleForSize(const int32_t  texWidth,
            scaleFactor;
 }
 
+// Meta's compositor requires Y-flip for Android Surface textures (negative size.height).
+// Pico's compositor does not — negative height causes a 180° rotation on Pico.
+float AndroidSurfaceHeightSign() {
+    using VRSettings::HMDType;
+    const auto t = VRSettings::values.hmd_type;
+    if (t == HMDType::PICO4 || t == HMDType::PICO4ULTRA || t == HMDType::FALLBACK_HMD) {
+        return 1.0f;
+    }
+    return -1.0f;
+}
+
 } // anonymous namespace
 
 /*
@@ -355,7 +366,7 @@ void GameSurfaceLayer::FrameTopPanel(const XrSpace& space, std::vector<XrComposi
             // Scale to get the desired density within the visible area (if we
             // want).
             const auto scale  = GetDensityScaleForSize(mTopPanel.mWidth - cropHoriz,
-                                                       -mTopPanel.mHeight, 1.0f, mResolutionFactor);
+                                                       AndroidSurfaceHeightSign() * mTopPanel.mHeight, 1.0f, mResolutionFactor);
             layer.size.width  = scale.x;
             layer.size.height = scale.y;
 
@@ -397,10 +408,10 @@ void GameSurfaceLayer::FrameLowerPanel(const XrSpace&                   space,
     layer.subImage.imageRect.offset.y = mLowerPanel.mHeight + verticalBorderTex +
                                         mLowerPanel.mHeight * (0.5f - (0.5f / immersiveModeFactor));
     layer.subImage.imageRect.extent.width  = (mLowerPanel.mWidth - cropHoriz) / immersiveModeFactor;
-    layer.subImage.imageRect.extent.height = mLowerPanel.mHeight / immersiveModeFactor;
+    layer.subImage.imageRect.extent.height = mLowerPanel.mHeight / immersiveModeFactor - verticalBorderTex;
     layer.subImage.imageArrayIndex         = 0;
     layer.pose                             = mLowerPanel.mPanelFromWorld;
-    const auto scale  = GetDensityScaleForSize(mLowerPanel.mWidth - cropHoriz, -mLowerPanel.mHeight,
+    const auto scale  = GetDensityScaleForSize(mLowerPanel.mWidth - cropHoriz, AndroidSurfaceHeightSign() * mLowerPanel.mHeight,
                                                mLowerPanel.mScaleFactor, mResolutionFactor);
     layer.size.width  = scale.x;
     layer.size.height = scale.y;
@@ -512,29 +523,11 @@ void GameSurfaceLayer::Shutdown() {
 }
 
 void GameSurfaceLayer::CreateSwapchain() {
-    // Initialize swapchain
-
-    XrSwapchainCreateInfo xsci;
-    memset(&xsci, 0, sizeof(xsci));
-    xsci.type        = XR_TYPE_SWAPCHAIN_CREATE_INFO;
-    xsci.next        = nullptr;
-    xsci.usageFlags  = XR_SWAPCHAIN_USAGE_SAMPLED_BIT | XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT;
-    xsci.format      = 0;
-    xsci.sampleCount = 0;
-    xsci.width       = SURFACE_WIDTH_UNSCALED * mResolutionFactor;
-    xsci.height      = SURFACE_HEIGHT_UNSCALED * mResolutionFactor;
-
-    xsci.faceCount = 0;
-    xsci.arraySize = 0;
-    // Note: you can't have mips when you render directly to a
-    // surface-backed swapchain. You just have to scale everything
-    // so that you do not need them.
-    xsci.mipCount = 0;
-
+    const uint32_t width  = SURFACE_WIDTH_UNSCALED * mResolutionFactor;
+    const uint32_t height = SURFACE_HEIGHT_UNSCALED * mResolutionFactor;
     ALOGI("GameSurfaceLayer: Creating swapchain of size {}x{} ({}x{} with "
           "resolution factor {}x)",
-          xsci.width, xsci.height, SURFACE_WIDTH_UNSCALED, SURFACE_HEIGHT_UNSCALED,
-          mResolutionFactor);
+          width, height, SURFACE_WIDTH_UNSCALED, SURFACE_HEIGHT_UNSCALED, mResolutionFactor);
 
     PFN_xrCreateSwapchainAndroidSurfaceKHR pfnCreateSwapchainAndroidSurfaceKHR = nullptr;
     assert(OpenXr::GetInstance() != XR_NULL_HANDLE);
@@ -542,13 +535,59 @@ void GameSurfaceLayer::CreateSwapchain() {
         xrGetInstanceProcAddr(OpenXr::GetInstance(), "xrCreateSwapchainAndroidSurfaceKHR",
                               (PFN_xrVoidFunction*)(&pfnCreateSwapchainAndroidSurfaceKHR));
     if (xrResult != XR_SUCCESS || pfnCreateSwapchainAndroidSurfaceKHR == nullptr) {
-        FAIL("xrGetInstanceProcAddr failed for "
-             "xrCreateSwapchainAndroidSurfaceKHR");
+        FAIL("xrGetInstanceProcAddr failed for xrCreateSwapchainAndroidSurfaceKHR");
     }
 
-    OXR(pfnCreateSwapchainAndroidSurfaceKHR(mSession, &xsci, &mSwapchain.mHandle, &mSurface));
-    mSwapchain.mWidth  = xsci.width;
-    mSwapchain.mHeight = xsci.height;
+    // Try format/usageFlags combinations to find what the runtime accepts.
+    // Per the OpenXR spec for xrCreateSwapchainAndroidSurfaceKHR, fields that are
+    // "not applicable" (sampleCount, faceCount, arraySize, mipCount) MUST be 0.
+    // Meta's runtime is lenient and accepts 1s; Pico validates strictly per spec.
+    struct SwapchainParams {
+        int64_t               format;
+        XrSwapchainUsageFlags usageFlags;
+    };
+    static const SwapchainParams kCandidates[] = {
+        {0,      0},                                                  // fully runtime-decided
+        {0,      XR_SWAPCHAIN_USAGE_SAMPLED_BIT},                   // runtime format, sampled
+        {1,      XR_SWAPCHAIN_USAGE_SAMPLED_BIT},                   // HAL RGBA_8888
+        {1,      0},                                                  // HAL RGBA_8888, no flags
+        {5,      XR_SWAPCHAIN_USAGE_SAMPLED_BIT},                   // HAL BGRA_8888
+        {5,      0},                                                  // HAL BGRA_8888, no flags
+        {4,      XR_SWAPCHAIN_USAGE_SAMPLED_BIT},                   // HAL RGB_565
+        {0x8058, XR_SWAPCHAIN_USAGE_SAMPLED_BIT |
+                 XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT},          // GL_RGBA8 (Meta)
+    };
+
+    for (const auto& p : kCandidates) {
+        XrSwapchainCreateInfo xsci;
+        memset(&xsci, 0, sizeof(xsci));
+        xsci.type        = XR_TYPE_SWAPCHAIN_CREATE_INFO;
+        xsci.usageFlags  = p.usageFlags;
+        xsci.format      = p.format;
+        // sampleCount/faceCount/arraySize/mipCount intentionally 0 per spec:
+        // "not applicable" fields must be zero for Android Surface swapchains.
+        xsci.sampleCount = 0;
+        xsci.width       = width;
+        xsci.height      = height;
+        xsci.faceCount   = 0;
+        xsci.arraySize   = 0;
+        xsci.mipCount    = 0;
+
+        ALOGI("  Trying format={} usageFlags=0x{:x}", p.format, p.usageFlags);
+        const XrResult result =
+            pfnCreateSwapchainAndroidSurfaceKHR(mSession, &xsci, &mSwapchain.mHandle, &mSurface);
+        if (result == XR_SUCCESS) {
+            ALOGI("  Swapchain created: format={} usageFlags=0x{:x}", p.format, p.usageFlags);
+            mSwapchain.mWidth  = width;
+            mSwapchain.mHeight = height;
+            return;
+        }
+        char errBuf[XR_MAX_RESULT_STRING_SIZE] = {};
+        xrResultToString(OpenXr::GetInstance(), result, errBuf);
+        ALOGW("  format={} usageFlags=0x{:x} -> {} (0x{:x})", p.format, p.usageFlags, errBuf,
+              (uint32_t)result);
+    }
+    FAIL("All xrCreateSwapchainAndroidSurfaceKHR parameter combinations failed");
 }
 
 void GameSurfaceLayer::SetLowerPanelWithPose(const XrPosef& pose) {

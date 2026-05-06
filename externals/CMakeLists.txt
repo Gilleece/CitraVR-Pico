@@ -99,7 +99,9 @@ endif()
 
 # Oaknut
 if ("arm64" IN_LIST ARCHITECTURE)
+    set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
     add_subdirectory(oaknut EXCLUDE_FROM_ALL)
+    set(BUILD_TESTING ON CACHE BOOL "" FORCE)
 endif()
 
 # Dynarmic
@@ -387,7 +389,7 @@ if (ENABLE_VULKAN)
         target_include_directories(SPIRV SYSTEM INTERFACE "${GLSLANG_PREFIX}/glslang")
     else()
         set(SKIP_GLSLANG_INSTALL ON CACHE BOOL "")
-        set(ENABLE_GLSLANG_BINARIES OFF CACHE BOOL "")
+        set(ENABLE_GLSLANG_BINARIES ON CACHE BOOL "")
         set(ENABLE_SPVREMAPPER OFF CACHE BOOL "")
         set(ENABLE_CTEST OFF CACHE BOOL "")
         set(ENABLE_HLSL OFF CACHE BOOL "")
