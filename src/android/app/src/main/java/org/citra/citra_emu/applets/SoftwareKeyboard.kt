@@ -5,15 +5,7 @@
 package org.citra.citra_emu.applets
 
 import android.text.InputFilter
-import android.text.InputType
 import android.text.Spanned
-import android.view.Gravity
-import android.view.KeyEvent
-import android.view.ViewGroup
-import android.view.inputmethod.EditorInfo
-import android.widget.EditText
-import android.widget.FrameLayout
-import android.widget.LinearLayout
 import androidx.annotation.Keep
 import org.citra.citra_emu.CitraApplication.Companion.appContext
 import org.citra.citra_emu.NativeLibrary
@@ -22,7 +14,6 @@ import org.citra.citra_emu.fragments.KeyboardDialogFragment
 import org.citra.citra_emu.utils.Log
 import org.citra.citra_emu.vr.VrActivity
 import org.citra.citra_emu.vr.ui.VrKeyboardView
-import org.citra.citra_emu.vr.utils.VRUtils
 import org.citra.citra_emu.vr.utils.VrMessageQueue
 import java.io.Serializable
 
@@ -31,71 +22,6 @@ import java.io.Serializable
 object SoftwareKeyboard {
     lateinit var data: KeyboardData
     val finishLock = Object()
-
-    // Shows an EditText anchored to the bottom of VrActivity's existing window.
-    // No new Android Window is created, so the Pico VR container keeps focus and
-    // the headset stays awake. The Pico system IME appears as a floating 3D panel.
-    // The user presses the IME's Done action (or Back) to confirm/cancel.
-    private fun showPicoKeyboardInput(activity: android.app.Activity, config: KeyboardConfig) {
-        val rootView = activity.window.decorView as ViewGroup
-
-        val container = LinearLayout(activity).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(32, 16, 32, 16)
-            setBackgroundColor(0xDD1A1A2E.toInt())
-            layoutParams = FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                Gravity.BOTTOM
-            )
-        }
-
-        val editText = EditText(activity).apply {
-            hint = config.hintText ?: ""
-            isSingleLine = !config.multilineMode
-            filters = arrayOf(Filter(), InputFilter.LengthFilter(config.maxTextLength))
-            inputType = InputType.TYPE_CLASS_TEXT
-            imeOptions = EditorInfo.IME_ACTION_DONE
-            setTextColor(0xFFFFFFFF.toInt())
-            setHintTextColor(0xFF888888.toInt())
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
-        }
-        container.addView(editText)
-        rootView.addView(container)
-
-        fun finish(button: Int, text: String) {
-            rootView.removeView(container)
-            data = KeyboardData(button, text)
-            synchronized(finishLock) { finishLock.notifyAll() }
-        }
-
-        editText.setOnEditorActionListener { _, actionId, _ ->
-            if (actionId == EditorInfo.IME_ACTION_DONE || actionId == EditorInfo.IME_NULL) {
-                val text = editText.text.toString()
-                val error = ValidateInput(text)
-                if (error == ValidationError.None) {
-                    finish(config.buttonConfig, text)
-                    true
-                } else {
-                    HandleValidationError(config, error)
-                    false
-                }
-            } else false
-        }
-
-        // Back key = cancel
-        editText.setOnKeyListener { _, keyCode, event ->
-            if (keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_UP) {
-                finish(0, "")
-                true
-            } else false
-        }
-
-        editText.requestFocus()
-    }
 
     private fun ExecuteImpl(config: KeyboardConfig) {
         val emulationActivity = NativeLibrary.sEmulationActivity.get()
@@ -138,26 +64,11 @@ object SoftwareKeyboard {
         }
 
         val emulationActivity = NativeLibrary.sEmulationActivity.get()
-        val isPico = VRUtils.isPicoHmd()
-
-        // On Pico: add EditText directly to VrActivity's existing window (no new dialog window).
-        // This keeps the VR container focused so the headset doesn't sleep. The Pico system IME
-        // appears as its normal floating 3D keyboard panel. User presses Done to confirm.
-        if (isPico) {
-            Log.info("[SoftwareKeyboard] Pico: showing in-window keyboard input")
-            data = KeyboardData(0, "") // default if timeout occurs
-            NativeLibrary.sEmulationActivity.get()!!.runOnUiThread {
-                showPicoKeyboardInput(emulationActivity!!, config)
-            }
-            synchronized(finishLock) {
-                try {
-                    finishLock.wait(120_000) // 2-minute timeout
-                } catch (ignored: Exception) {}
-            }
-            return data
-        }
 
         if (emulationActivity is VrActivity) {
+            // Default to "cancel" in case the keyboard view is unavailable or the wait
+            // below times out before a result button is pressed.
+            data = KeyboardData(0, "")
             Log.info("[SoftwareKeyboard] VR keyboard requested (buttonConfig=${config.buttonConfig})")
             NativeLibrary.sEmulationActivity.get()!!.runOnUiThread {
                 val keyboardView = VrKeyboardView.sVrKeyboardView.get()
