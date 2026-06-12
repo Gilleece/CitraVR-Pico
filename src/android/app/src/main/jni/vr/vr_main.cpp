@@ -332,10 +332,6 @@ private:
         mOpenSettingsMethodID =
             jni->GetMethodID(jni->GetObjectClass(mActivityObject), "openSettingsMenu", "()V");
         if (mOpenSettingsMethodID == nullptr) { FAIL("could not get openSettingsMenuMethodID"); }
-
-        if (VRSettings::values.vr_immersive_mode != 0) {
-            mLastAppState.mIsLowerMenuToggledOn = false;
-        }
     }
 
     void InitLayers(JNIEnv* jni) {
@@ -449,10 +445,7 @@ private:
         //////////////////////////////////////////////////
 
         // enable toggle when menu is set to main. Otherwise, always on (super immersive disabled).
-        // On Pico, VirtualDisplay-backed UILayers don't render (compositor shader fails).
-        // Never show the ribbon on Pico to avoid displaying the app-mirror fallback.
-        const bool showUIRibbon = !VRSettings::IsPico() &&
-                                  (appState.mLowerMenuType == LowerMenuType::POSITIONAL_MENU ||
+        const bool showUIRibbon = (appState.mLowerMenuType == LowerMenuType::POSITIONAL_MENU ||
                                    appState.mIsLowerMenuToggledOn);
 
         float      immersiveModeFactor    = (VRSettings::values.vr_immersive_mode < 2)
@@ -493,8 +486,7 @@ private:
                                              immersiveModeFactor);
 
             if (showUIRibbon) { mRibbonLayer->Frame(gOpenXr->mLocalSpace, layers, layerCount); }
-            const bool showLowerPanel =
-                (showUIRibbon || VRSettings::IsPico()) &&
+            const bool showLowerPanel = showUIRibbon &&
                 appState.mLowerMenuType == LowerMenuType::MAIN_MENU;
             if (showLowerPanel) {
                 mGameSurfaceLayer->FrameLowerPanel(gOpenXr->mLocalSpace, layers, layerCount,
@@ -897,17 +889,13 @@ private:
 
         if (mIsLayersInitialized && newState.mNumPanelResets > mLastAppState.mNumPanelResets) {
             mGameSurfaceLayer->ResetPanelPositions();
-            if (!VRSettings::IsPico()) {
-                mRibbonLayer->SetPanelWithPose(mGameSurfaceLayer->GetLowerPanelPose());
-            }
+            mRibbonLayer->SetPanelWithPose(mGameSurfaceLayer->GetLowerPanelPose());
         }
 
         if (mIsLayersInitialized && newState.mIsHorizontalAxisLocked &&
             !mLastAppState.mIsHorizontalAxisLocked) {
             mGameSurfaceLayer->ResetPanelPositions();
-            if (!VRSettings::IsPico()) {
-                mRibbonLayer->SetPanelWithPose(mGameSurfaceLayer->GetLowerPanelPose());
-            }
+            mRibbonLayer->SetPanelWithPose(mGameSurfaceLayer->GetLowerPanelPose());
         }
     }
 

@@ -26,6 +26,14 @@ object VRUtils {
         FALLBACK_HMD(8)
     }
 
+    // NOTE: keep in-sync with VRSettings::IsPico() in vr_settings.h
+    @JvmStatic
+    fun isPicoHmd(): Boolean {
+        val t = hMDType
+        return t == HMDType.PICO4.value || t == HMDType.PICO4ULTRA.value ||
+            t == HMDType.FALLBACK_HMD.value
+    }
+
     enum class Hotkey(val button: Int) {
         CLOSE_GAME(org.citra.citra_emu.features.hotkeys.Hotkey.CLOSE_GAME.button);
     }

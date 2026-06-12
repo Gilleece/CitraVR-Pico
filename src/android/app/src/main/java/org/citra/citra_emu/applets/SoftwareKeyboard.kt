@@ -138,10 +138,7 @@ object SoftwareKeyboard {
         }
 
         val emulationActivity = NativeLibrary.sEmulationActivity.get()
-        val hmdType = VRUtils.hMDType
-        val isPico = hmdType == VRUtils.HMDType.PICO4.value ||
-                     hmdType == VRUtils.HMDType.PICO4ULTRA.value ||
-                     hmdType == VRUtils.HMDType.FALLBACK_HMD.value
+        val isPico = VRUtils.isPicoHmd()
 
         // On Pico: add EditText directly to VrActivity's existing window (no new dialog window).
         // This keeps the VR container focused so the headset doesn't sleep. The Pico system IME

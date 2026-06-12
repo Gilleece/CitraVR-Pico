@@ -15,7 +15,7 @@ class VrKeyboardLayer(activity: VrActivity) : VrUILayer(activity, R.layout.vr_ke
         // Do NOT call requestFocus() on the EditText — it triggers the system IME on Pico
         // even with all suppression flags set. VrKeyboardView handles input via touch listeners.
         window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN)
-        val editText = window?.findViewById<View>(R.id.vrKeyboardText) as EditText
-        editText.setShowSoftInputOnFocus(false)
+        val editText = findViewById<EditText>(R.id.vrKeyboardText)
+        editText?.setShowSoftInputOnFocus(false)
     }
 }

@@ -126,11 +126,11 @@ Panel CreateLowerPanelFromTopPanel(const Panel& topPanel, const float resolution
                                    const bool isImmersiveModeEnabled) {
     // Note: the fact that two constants are 0.75 is purely coincidental.
     constexpr float kDefaultLowerPanelScaleFactor     = 0.75f * 0.75f;
-    constexpr float kDefaultLowerPanelYOffsetInMeters = -0.75f;
+    constexpr float kDefaultLowerPanelYOffsetInMeters = -1.0f;
     constexpr float kDefaultLowerPanelZOffsetInMeters = 0.5f;
 
     constexpr float kImmersiveLowerPanelYOffsetInMeters = -1.0f;
-    constexpr float kImmersiveLowerPanelZOffsetInMeters = 0.0f;
+    constexpr float kImmersiveLowerPanelZOffsetInMeters = -1.0f;
 
     // Pitch the lower panel away from the viewer 45 degrees
     const float cropHoriz = 90.0f * resolutionFactor;
@@ -330,14 +330,14 @@ void GameSurfaceLayer::FrameTopPanel(const XrSpace& space, std::vector<XrComposi
             layer.subImage.imageRect.extent.height = mTopPanel.mHeight - verticalBorderTex;
             layer.subImage.imageArrayIndex         = 0;
             layer.pose                             = topPanelFromWorld;
-            layer.pose.position.z += (mImmersiveMode < 2) ? radius : 0.0f;
+            layer.pose.position.z += (mImmersiveMode < 2) ? radius - 1.0f : -1.0f;
             layer.radius = radius;
             layer.centralAngle =
                 (!mImmersiveMode ? GetCentralAngleSysprop()
                                  : GameSurfaceLayer::DEFAULT_CYLINDER_CENTRAL_ANGLE_DEGREES *
                                        immersiveModeFactor) *
                 MATH_FLOAT_PI / 180.0f;
-            layer.aspectRatio              = -static_cast<double>(mTopPanel.AspectRatio());
+            layer.aspectRatio              = static_cast<double>(mTopPanel.AspectRatio());
             layers[layerCount++].mCylinder = layer;
         }
     } else {
