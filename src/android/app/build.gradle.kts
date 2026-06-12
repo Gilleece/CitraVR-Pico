@@ -82,8 +82,12 @@ android {
                     "-DENABLE_SDL2=0", // Don't use SDL
                     "-DANDROID_ARM_NEON=true", // cryptopp requires Neon to work
                     "-DANDROID_LD=lld", // Use lld linker to fix LTO with NDK r22+
-                    "-DPYTHON_EXECUTABLE=C:/Users/WindowsBaguette/AppData/Local/Programs/Python/Python314/python.exe",
-                    "-DGLSLANG=C:/Users/WindowsBaguette/AppData/Local/Android/Sdk/emulator/lib64/vulkan/glslangValidator.exe"
+                    // Use the modern toolchain file so CMAKE_ANDROID_NDK_VERSION is set.
+                    // The legacy toolchain leaves it empty, which makes CMake's
+                    // Compiler/Clang.cmake add "-fuse-ld=gold" to LTO/IPO link options.
+                    // NDK r26 removed the gold linker, so that flag breaks the build
+                    // ("invalid linker name in argument '-fuse-ld=gold'").
+                    "-DANDROID_USE_LEGACY_TOOLCHAIN_FILE=false"
                 )
             }
         }

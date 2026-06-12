@@ -1,4 +1,4 @@
-package org.citra.citra_emu.vr.ui
+﻿package org.citra.citra_emu.vr.ui
 
 import android.os.Handler
 import android.widget.RadioButton
@@ -44,9 +44,9 @@ class VrRibbonLayer(activity: VrActivity) : VrUILayer(activity, R.layout.vr_ribb
     if (menuTypeCurrent == MenuType.STATS) {
       endLogPerfStats()
     }
-    window?.findViewById<View>(menuTypeCurrent.resId)?.visibility = View.GONE
+    findViewById<View>(menuTypeCurrent.resId)?.visibility = View.GONE
     menuTypeCurrent = menuTypeNew
-    window?.findViewById<View>(menuTypeCurrent.resId)?.visibility = View.VISIBLE
+    findViewById<View>(menuTypeCurrent.resId)?.visibility = View.VISIBLE
     if (menuTypeCurrent == MenuType.MAIN)
       VrMessageQueue.post(VrMessageQueue.MessageType.CHANGE_LOWER_MENU, 0)
     else if (menuTypeCurrent == MenuType.POSITION)
@@ -62,7 +62,7 @@ class VrRibbonLayer(activity: VrActivity) : VrUILayer(activity, R.layout.vr_ribb
   }
 
   private fun initializeLeftMenu() {
-    val radioGroup = window?.findViewById<RadioGroup>(R.id.vertical_tab)
+    val radioGroup = findViewById<RadioGroup>(R.id.vertical_tab)
       radioGroup?.setOnCheckedChangeListener { group, checkedId ->
         // Loop through all radio buttons in the group
         for (i in 0 until group.childCount) {
@@ -87,11 +87,11 @@ class VrRibbonLayer(activity: VrActivity) : VrUILayer(activity, R.layout.vr_ribb
   }
 
   private fun initializePositionalPanel() {
-    val horizontalLockToggle = window?.findViewById<ToggleButton>(R.id.horizontalAxisToggle)
+    val horizontalLockToggle = findViewById<ToggleButton>(R.id.horizontalAxisToggle)
       horizontalLockToggle?.setOnCheckedChangeListener { _, isChecked ->
         VrMessageQueue.post(VrMessageQueue.MessageType.CHANGE_LOCK_HORIZONTAL_AXIS, if (isChecked) 1 else 0)
       }
-    val btnReset = window?.findViewById<Button>(R.id.btnReset)
+    val btnReset = findViewById<Button>(R.id.btnReset)
       btnReset?.setOnClickListener { _ ->
         VrMessageQueue.post(VrMessageQueue.MessageType.RESET_PANEL_POSITIONS, 0)
           false
@@ -100,7 +100,7 @@ class VrRibbonLayer(activity: VrActivity) : VrUILayer(activity, R.layout.vr_ribb
     horizontalLockToggle?.isChecked = true;
     VrMessageQueue.post(VrMessageQueue.MessageType.CHANGE_LOCK_HORIZONTAL_AXIS, if (horizontalLockToggle?.isChecked == true) 1 else 0)
 
-      window?.findViewById<View>(R.id.frame)?.setOnTouchListener { _, motionEvent ->
+      findViewById<View>(R.id.frame)?.setOnTouchListener { _, motionEvent ->
         /// set isMenuBackgroundSelected based on the motionEvent
         when (motionEvent.action) {
           KeyEvent.ACTION_DOWN -> {
@@ -115,7 +115,7 @@ class VrRibbonLayer(activity: VrActivity) : VrUILayer(activity, R.layout.vr_ribb
   }
 
   private fun initializeMainPanel() {
-    window?.findViewById<Button>(R.id.buttonSelect)?.setOnTouchListener { _, motionEvent ->
+    findViewById<Button>(R.id.buttonSelect)?.setOnTouchListener { _, motionEvent ->
       val action: Int = when (motionEvent.action) {
         KeyEvent.ACTION_DOWN -> {
           // Normal key events.
@@ -132,7 +132,7 @@ class VrRibbonLayer(activity: VrActivity) : VrUILayer(activity, R.layout.vr_ribb
           )
         false
     }
-    window?.findViewById<Button>(R.id.buttonStart)?.setOnTouchListener { _, motionEvent ->
+    findViewById<Button>(R.id.buttonStart)?.setOnTouchListener { _, motionEvent ->
       val action: Int = when (motionEvent.action) {
         KeyEvent.ACTION_DOWN -> {
           // Normal key events.
@@ -149,7 +149,7 @@ class VrRibbonLayer(activity: VrActivity) : VrUILayer(activity, R.layout.vr_ribb
           )
         false
     }
-    window?.findViewById<Button>(R.id.buttonExit)?.setOnTouchListener { _, motionEvent ->
+    findViewById<Button>(R.id.buttonExit)?.setOnTouchListener { _, motionEvent ->
       activity.quitToMenu()
         false
     }
@@ -173,25 +173,27 @@ class VrRibbonLayer(activity: VrActivity) : VrUILayer(activity, R.layout.vr_ribb
   private var perfStatsUpdater: Runnable? = null
   private lateinit var perfStatsUpdateHandler : Handler
 
-  private external fun nativeGetStatsOXR(): FloatArray
+  // Returns null when the runtime doesn't support XR_META_performance_metrics
+  // (e.g. Pico); only game stats are shown in that case.
+  private external fun nativeGetStatsOXR(): FloatArray?
 
   private fun initializeStatsPanel() {
     perfStatsUpdateHandler =  Handler(activity.mainLooper)
 
-    valueGameFps = window?.findViewById(R.id.value_game_fps) ?: return
-    valueGameFrameTime = window?.findViewById(R.id.value_game_frame_time) ?: return
-    valueEmulationSpeed = window?.findViewById(R.id.value_emulation_speed) ?: return
-    valueCpuUsage = window?.findViewById(R.id.value_cpu_usage) ?: return
-    cpuProgressBar = window?.findViewById(R.id.progress_cpu_usage) ?: return
-    valueGpuUsage = window?.findViewById(R.id.value_gpu_usage) ?: return
-    gpuProgressBar = window?.findViewById(R.id.progress_gpu_usage) ?: return
-    valueAppCpu = window?.findViewById(R.id.value_vr_app_cpu) ?: return
-    valueAppGpu = window?.findViewById(R.id.value_vr_app_gpu) ?: return
-    valueVrLatency = window?.findViewById(R.id.value_vr_app_latency) ?: return
-    valueVrCompCpu= window?.findViewById(R.id.value_vr_comp_cpu) ?: return
-    valueVrCompGpu= window?.findViewById(R.id.value_vr_comp_gpu) ?: return
-    valueVrCompTears= window?.findViewById(R.id.value_vr_comp_tears) ?: return
-    valueAppVersion = window?.findViewById(R.id.value_app_version) ?: return
+    valueGameFps = findViewById(R.id.value_game_fps) ?: return
+    valueGameFrameTime = findViewById(R.id.value_game_frame_time) ?: return
+    valueEmulationSpeed = findViewById(R.id.value_emulation_speed) ?: return
+    valueCpuUsage = findViewById(R.id.value_cpu_usage) ?: return
+    cpuProgressBar = findViewById(R.id.progress_cpu_usage) ?: return
+    valueGpuUsage = findViewById(R.id.value_gpu_usage) ?: return
+    gpuProgressBar = findViewById(R.id.progress_gpu_usage) ?: return
+    valueAppCpu = findViewById(R.id.value_vr_app_cpu) ?: return
+    valueAppGpu = findViewById(R.id.value_vr_app_gpu) ?: return
+    valueVrLatency = findViewById(R.id.value_vr_app_latency) ?: return
+    valueVrCompCpu= findViewById(R.id.value_vr_comp_cpu) ?: return
+    valueVrCompGpu= findViewById(R.id.value_vr_comp_gpu) ?: return
+    valueVrCompTears= findViewById(R.id.value_vr_comp_tears) ?: return
+    valueAppVersion = findViewById(R.id.value_app_version) ?: return
     valueAppVersion.text = BuildConfig.VERSION_NAME
   }
 
@@ -218,8 +220,8 @@ class VrRibbonLayer(activity: VrActivity) : VrUILayer(activity, R.layout.vr_ribb
       }
 
       // Retrieve and display the VR stats
-      val statsOXR: FloatArray = nativeGetStatsOXR()
-      if (statsOXR.size > 0) {
+      val statsOXR = nativeGetStatsOXR()
+      if (statsOXR != null && statsOXR.isNotEmpty()) {
         val DEVICE_CPU_USAGE = 0
         val DEVICE_GPU_USAGE = 1
         val APP_CPU_FRAMETIME_MS = 2

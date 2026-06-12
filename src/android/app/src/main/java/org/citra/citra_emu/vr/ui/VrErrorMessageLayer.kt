@@ -25,10 +25,10 @@ class VrErrorMessageLayer(activity: VrActivity) : VrUILayer(activity, R.layout.v
     }
     override fun onSurfaceCreated() {
         super.onSurfaceCreated()
-        titleView = window!!.findViewById(R.id.title)
-        messageView = window!!.findViewById(R.id.main_message)
-        window!!.findViewById<Button>(R.id.abort_button).setOnClickListener { _ ->  System.exit(0)}
-        window!!.findViewById<Button>(R.id.continue_button).setOnClickListener { _ ->    VrMessageQueue.post(VrMessageQueue.MessageType.SHOW_ERROR_MESSAGE, 0) }
+        titleView = findViewById(R.id.title)
+        messageView = findViewById(R.id.main_message)
+        findViewById<Button>(R.id.abort_button)?.setOnClickListener { _ ->  System.exit(0)}
+        findViewById<Button>(R.id.continue_button)?.setOnClickListener { _ ->    VrMessageQueue.post(VrMessageQueue.MessageType.SHOW_ERROR_MESSAGE, 0) }
         isSurfaceCreated.set(true)
 
         sVrErrorMessageLayer = WeakReference(this)
